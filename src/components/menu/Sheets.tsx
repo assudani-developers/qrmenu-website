@@ -111,7 +111,25 @@ export function DishSheet({ d, canOrder, onAdd }: { d: Dish; canOrder: boolean; 
   );
 }
 
-export function Checkout({ cart, data, table, inc, dec, onPlaced }: { cart: CartLine[]; data: MenuData; table: string; inc: (k: string) => void; dec: (k: string) => void; onPlaced: (o: { id: string; trackKey: string; token: number }) => void }) {
+/** One QR for the whole restaurant: the guest taps their table (or types it when the owner has not listed tables). */
+export function TablePicker({ tables, value, onChange }: { tables: string[]; value: string; onChange: (t: string) => void }) {
+  if (!tables.length) return <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="numeric" placeholder="Your table number" aria-label="Your table number" className={field} style={fieldStyle} />;
+  return (
+    <div role="radiogroup" aria-label="Your table">
+      <div className="mb-2 text-sm font-bold">Which table are you at?</div>
+      <div className="flex flex-wrap gap-2">
+        {tables.map((x) => (
+          <button key={x} role="radio" aria-checked={value === x} onClick={() => onChange(x)} className="min-w-12 rounded-xl px-3.5 py-2.5 text-sm font-extrabold transition-transform active:scale-95"
+            style={value === x ? { background: 'var(--p)', color: 'var(--onp)' } : { background: 'var(--soft)', border: '1px solid var(--line)' }}>
+            {x.replace(/^table\s*/i, '')}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function Checkout({ cart, data, table, inc, dec, onPlaced, onTable }: { cart: CartLine[]; data: MenuData; table: string; inc: (k: string) => void; dec: (k: string) => void; onPlaced: (o: { id: string; trackKey: string; token: number }) => void; onTable: (t: string) => void }) {
   const r = data.restaurant;
   const [t, setT] = useState(table || '');
   const [name, setName] = useState('');
@@ -125,7 +143,7 @@ export function Checkout({ cart, data, table, inc, dec, onPlaced }: { cart: Cart
 
   async function place() {
     setErr('');
-    if (!t) return setErr('Choose your table');
+    if (!t.trim()) return setErr('Tell us your table so the food reaches you');
     if (phone && !/^\+?[0-9 ]{10,15}$/.test(phone)) return setErr('Enter a valid mobile number or leave it empty');
     setBusy(true);
     try {
@@ -136,6 +154,7 @@ export function Checkout({ cart, data, table, inc, dec, onPlaced }: { cart: Cart
       const j = await res.json();
       if (!res.ok || !j.success) throw new Error(j.message || 'Could not place the order');
       try { localStorage.setItem(`qrm_order_${r.shortId}`, JSON.stringify({ id: j.order.id, key: j.order.trackKey, token: j.order.token })); } catch (_) {}
+      onTable(t);
       onPlaced(j.order);
     } catch (e: any) {
       setErr(e.message);
@@ -164,13 +183,7 @@ export function Checkout({ cart, data, table, inc, dec, onPlaced }: { cart: Cart
         ))}
       </div>
       <div className="mt-4 space-y-3">
-        {!table && (r.tables || []).length > 0 && (
-          <select value={t} onChange={(e) => setT(e.target.value)} className={field} style={fieldStyle} aria-label="Your table">
-            <option value="">Choose your table</option>
-            {(r.tables || []).map((x) => <option key={x} value={x}>{x}</option>)}
-          </select>
-        )}
-        {!table && !(r.tables || []).length && <input value={t} onChange={(e) => setT(e.target.value)} placeholder="Table number" className={field} style={fieldStyle} />}
+        <TablePicker tables={r.tables || []} value={t} onChange={setT} />
         <div className="grid grid-cols-2 gap-3">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={field} style={fieldStyle} />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="Mobile (optional)" className={field} style={fieldStyle} />
@@ -244,8 +257,9 @@ export function Tracker({ o, onRate, canRate }: { o: any; onRate: () => void; ca
   );
 }
 
-export function CallStaff({ code, table, onDone }: { code: string; table: string; onDone: (msg: string) => void }) {
+export function CallStaff({ code, table, tables, onTable, onDone }: { code: string; table: string; tables: string[]; onTable: (t: string) => void; onDone: (msg: string) => void }) {
   const [busy, setBusy] = useState('');
+  const [t, setT] = useState(table);
   const opts = [
     { type: 'waiter', label: 'Call a waiter', icon: BellRing },
     { type: 'bill', label: 'Ask for the bill', icon: Receipt },
@@ -253,15 +267,17 @@ export function CallStaff({ code, table, onDone }: { code: string; table: string
     { type: 'cleaning', label: 'Clean the table', icon: Sparkles },
   ];
   async function send(type: string) {
+    if (!t.trim()) return onDone('Choose your table first');
     setBusy(type);
-    const r = await fetch(`${API}/api/service-calls`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: code, table, type }) }).then((x) => x.json()).catch(() => ({}));
+    onTable(t);
+    const r = await fetch(`${API}/api/service-calls`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: code, table: t, type }) }).then((x) => x.json()).catch(() => ({}));
     setBusy('');
     onDone(r.success ? 'The staff has been told. Someone is on the way.' : r.message || 'Could not reach the staff. Please wave to them.');
   }
   return (
     <div className="px-6 pt-2">
       <h2 className="text-[26px] font-bold" style={{ fontFamily: 'var(--hf)' }}>Need something?</h2>
-      <p className="text-sm" style={{ color: 'var(--mu)' }}>{table}</p>
+      {table ? <p className="text-sm" style={{ color: 'var(--mu)' }}>{table}</p> : <div className="mt-4"><TablePicker tables={tables} value={t} onChange={setT} /></div>}
       <div className="mt-5 grid grid-cols-2 gap-3">
         {opts.map((o) => (
           <button key={o.type} onClick={() => send(o.type)} disabled={!!busy} className="flex flex-col items-start gap-3 rounded-[var(--r)] p-4 text-left font-bold transition-transform active:scale-95" style={{ background: 'var(--soft)', border: '1px solid var(--line)' }}>

@@ -14,7 +14,10 @@ const ease = [0.2, 0.8, 0.2, 1] as const;
 
 export default function MenuClient({ code }: { code: string }) {
   const sp = useSearchParams();
-  const table = sp.get('t') || sp.get('table') || '';
+  // one QR per restaurant: the table comes from the guest (remembered for this visit); old table QR links still work
+  const [table, setTableState] = useState(sp.get('t') || sp.get('table') || '');
+  useEffect(() => { if (!table) try { setTableState(sessionStorage.getItem(`qrm_table_${code}`) || ''); } catch (_) {} }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setTable = (t: string) => { setTableState(t); try { sessionStorage.setItem(`qrm_table_${code}`, t); } catch (_) {} };
   const [data, setData] = useState<MenuData | null>(null);
   const [state, setState] = useState<'loading' | 'ok' | 'missing' | 'error'>('loading');
   const [q, setQ] = useState('');
@@ -189,7 +192,7 @@ export default function MenuClient({ code }: { code: string }) {
                 <ChevronRight size={16} />
               </motion.button>
             )}
-            {data.features.serviceCalls && table && !count && (
+            {data.features.serviceCalls && !count && (
               <motion.button key="call" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={() => setModal('call')} aria-label="Call staff"
                 className="pointer-events-auto absolute bottom-[max(16px,env(safe-area-inset-bottom))] right-4 grid size-14 place-items-center rounded-full shadow-2xl" style={{ background: 'var(--p)', color: 'var(--onp)' }}>
                 <BellRing size={22} />
@@ -213,12 +216,12 @@ export default function MenuClient({ code }: { code: string }) {
         {dish && <DishSheet key={dish.id} d={dish} canOrder={canOrder && sections.find((s) => s.name === dish.category)?.open !== false} onAdd={(v, a, n) => { add(dish, v, a, n); close(); }} />}
       </Sheet>
       <Sheet open={modal === 'cart'} onClose={close} label="Your order">
-        <Checkout cart={cart} data={data} table={table} inc={inc} dec={dec} onPlaced={() => { setCart([]); setBump((b) => b + 1); setModal('track'); }} />
+        <Checkout cart={cart} data={data} table={table} onTable={setTable} inc={inc} dec={dec} onPlaced={() => { setCart([]); setBump((b) => b + 1); setModal('track'); }} />
       </Sheet>
       <Sheet open={modal === 'track' && !!order} onClose={close} label="Order status">
         {order && <Tracker o={order} canRate={!!data.features.reviewInterceptor} onRate={() => setModal('rate')} />}
       </Sheet>
-      <Sheet open={modal === 'call'} onClose={close} label="Call staff"><CallStaff code={code} table={table} onDone={(m) => { close(); setToast(m); }} /></Sheet>
+      <Sheet open={modal === 'call'} onClose={close} label="Call staff"><CallStaff code={code} table={table} tables={data.restaurant.tables || []} onTable={setTable} onDone={(m) => { close(); setToast(m); }} /></Sheet>
       <Sheet open={modal === 'book'} onClose={close} label="Book a table"><Book code={code} onDone={(m) => { close(); setToast(m); }} /></Sheet>
       <Sheet open={modal === 'rate'} onClose={close} label="Rate us"><Rate code={code} table={table} onDone={(m) => { close(); setToast(m); }} /></Sheet>
 
@@ -237,11 +240,28 @@ function Header({ data, table }: { data: MenuData; table: string }) {
   const r = data.restaurant;
   const T = r.template;
   const cover = r.theme.coverUrl;
-  const chips = [r.cuisine, r.city && { icon: MapPin, t: r.city }, r.openingHours && { icon: Clock, t: r.openingHours }, table && { icon: null, t: table }].filter(Boolean) as any[];
-  const Logo = r.theme.logoUrl ? (
-    <motion.img initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }} src={r.theme.logoUrl} alt={`${r.name} logo`}
-      className="size-20 rounded-full object-cover shadow-xl" style={{ border: `3px solid ${T.surface}` }} />
-  ) : null;
+  const open = r.store?.open !== false;
+  const veg = data.items.length > 0 && data.items.every((i) => i.isVeg);
+  const chips = [
+    { icon: null, t: open ? '● Open now' : 'Kitchen closed' },
+    r.cuisine,
+    data.items.length > 0 && `${data.items.length} dishes`,
+    veg ? 'Pure veg' : data.items.some((i) => !i.isVeg) && 'Veg & non-veg',
+    r.city && { icon: MapPin, t: r.city },
+    r.openingHours && { icon: Clock, t: r.openingHours },
+    table && { icon: null, t: table },
+  ].filter(Boolean) as any[];
+  // no logo uploaded: a gold-ringed monogram, so the header never looks empty
+  const Logo = (
+    <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
+      className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-full shadow-xl" style={{ border: `3px solid ${T.surface}`, background: T.primary, color: onColor(T.primary) }}>
+      {r.theme.logoUrl
+        ? <img src={r.theme.logoUrl} alt={`${r.name} logo`} className="size-full object-cover" />
+        : <span className="text-[34px] font-bold" style={{ fontFamily: 'var(--hf)' }}>{(r.name || '?').trim().charAt(0).toUpperCase()}</span>}
+    </motion.div>
+  );
+  // a faint jaali (lattice) pattern instead of a flat colour when there is no cover photo
+  const jaali = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><g fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="1.2"><path d="M22 2c6 8 12 14 20 20-8 6-14 12-20 20-6-8-12-14-20-20 8-6 14-12 20-20z"/><circle cx="22" cy="22" r="4"/></g></svg>')}")`;
   const Title = (
     <>
       <motion.h1 initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease, delay: 0.15 }} className="text-[40px] font-bold leading-[1.02] sm:text-5xl" style={{ fontFamily: 'var(--hf)', letterSpacing: T.font === 'elegant' ? 0 : '-0.02em' }}>{r.name}</motion.h1>
@@ -261,7 +281,7 @@ function Header({ data, table }: { data: MenuData; table: string }) {
       <header className="relative overflow-hidden px-5 pb-10 pt-14 text-center" style={{ background: `radial-gradient(120% 90% at 50% 0%, ${alpha(T.primary, 0.22)}, transparent 70%)` }}>
         {cover && <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" />}
         <div className="relative mx-auto max-w-xl">
-          {Logo && <div className="mb-4 flex justify-center">{Logo}</div>}
+          <div className="mb-4 flex justify-center">{Logo}</div>
           <div style={{ color: 'var(--tx)' }} className="[&_span]:!bg-[var(--soft)] [&_span]:!border-[var(--line)]">{Title}</div>
         </div>
       </header>
@@ -270,7 +290,7 @@ function Header({ data, table }: { data: MenuData; table: string }) {
   if (T.header === 'band') {
     return (
       <header className="relative overflow-hidden px-5 pb-9 pt-12" style={{ background: `linear-gradient(135deg, ${T.primary}, ${T.accent})`, color: onColor(T.primary) }}>
-        {cover && <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-overlay" />}
+        {cover ? <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-overlay" /> : <div aria-hidden className="absolute inset-0" style={{ backgroundImage: jaali }} />}
         <motion.div aria-hidden className="absolute -right-16 -top-20 size-64 rounded-full" style={{ background: alpha('#ffffff', 0.12) }} animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 8, repeat: Infinity }} />
         <div className="relative mx-auto flex max-w-3xl items-end gap-4">
           {Logo}
@@ -280,15 +300,19 @@ function Header({ data, table }: { data: MenuData; table: string }) {
     );
   }
   return (
-    <header className="relative flex min-h-[340px] items-end overflow-hidden rounded-b-[32px] text-white sm:min-h-[400px]">
+    <header className={`relative flex items-end overflow-hidden rounded-b-[32px] text-white ${cover ? 'min-h-[340px] sm:min-h-[400px]' : 'min-h-[290px] sm:min-h-[330px]'}`}>
       {cover ? (
         <motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ duration: 1.6, ease }} src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
       ) : (
-        <div className="absolute inset-0" style={{ background: `radial-gradient(90% 80% at 85% 10%, ${alpha(T.primary, 0.75)}, transparent 60%), linear-gradient(160deg, ${T.accent}, ${dim(T.accent)})` }} />
+        <>
+          <div className="absolute inset-0" style={{ background: `radial-gradient(90% 80% at 85% 10%, ${alpha(T.primary, 0.75)}, transparent 60%), linear-gradient(160deg, ${T.accent}, ${dim(T.accent)})` }} />
+          <motion.div aria-hidden className="absolute inset-0" style={{ backgroundImage: jaali }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.2 }} />
+          <motion.div aria-hidden className="absolute -right-20 -top-24 size-72 rounded-full" style={{ border: `1px solid ${alpha('#ffffff', 0.2)}`, boxShadow: `inset 0 0 0 18px ${alpha('#ffffff', 0.04)}` }} animate={{ rotate: 360 }} transition={{ duration: 60, repeat: Infinity, ease: 'linear' }} />
+        </>
       )}
       <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.35) 50%, rgba(0,0,0,.72) 100%)' }} />
       <div className="relative mx-auto w-full max-w-3xl px-5 pb-8" style={{ textShadow: '0 2px 18px rgba(0,0,0,.35)' }}>
-        {Logo && <div className="mb-4">{Logo}</div>}
+        <div className="mb-4">{Logo}</div>
         {Title}
       </div>
     </header>
@@ -377,7 +401,7 @@ function Info({ data, table, onCall, onBook, onRate }: { data: MenuData; table: 
   return (
     <div className="mt-14 space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
-        {data.features.serviceCalls && table && <Action icon={BellRing} label="Call staff" onClick={onCall} />}
+        {data.features.serviceCalls && <Action icon={BellRing} label="Call staff" onClick={onCall} />}
         {data.features.reservations && <Action icon={CalendarDays} label="Book a table" onClick={onBook} />}
         {data.features.reviewInterceptor && <Action icon={Star} label="Rate your visit" onClick={onRate} />}
       </div>

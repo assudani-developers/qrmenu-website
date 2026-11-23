@@ -13,9 +13,9 @@ type View = {
   restaurant: { name: string; ownerName: string; phone: string; shortId: string; city: string };
   subscription: { status: string; plan: string; planName: string; daysLeft: number; endsAt: string | null; trialEndsAt: string | null };
   plans: PlanLite[]; payee: { upiId: string; name: string };
-  payment: null | { id: string; status: 'pending' | 'verified' | 'rejected'; amount: number; listPrice: number; coupon: string | null; discount: number; planId: string; utrRef: string; screenshotUrl?: string | null; date: string; verifiedAt: string | null; paidUntil: string | null };
+  payment: null | { id: string; status: 'pending' | 'verified' | 'rejected'; amount: number; listPrice: number; coupon: string | null; discount: number; planId: string; utrRef: string; screenshotUrl?: string | null; date: string; verifiedAt: string | null; paidUntil: string | null; credit?: number; creditPlan?: string | null; autoApproved?: boolean };
 };
-type Quote = { original: number; discount: number; final: number; coupon?: { code: string; type: string; value: number; description?: string }; extraTrialDays: number };
+type Quote = { original: number; discount: number; final: number; coupon?: { code: string; type: string; value: number; description?: string }; extraTrialDays: number; credit?: number; creditPlan?: string; creditDays?: number };
 
 const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
 const day = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -72,7 +72,14 @@ export default function PayClient({ id }: { id: string }) {
   const price = quote && !quote.extraTrialDays ? quote : p ? { original: p.price, discount: 0, final: p.price } : null;
   const upi = v && price ? `upi://pay?pa=${encodeURIComponent(v.payee.upiId)}&pn=${encodeURIComponent(v.payee.name)}&am=${price.final.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`${v.restaurant.shortId} ${plan} plan`)}` : '';
   useEffect(() => { if (upi) QRCode.toDataURL(upi, { margin: 1, width: 520, color: { dark: '#22152e', light: '#ffffff' } }).then(setQr).catch(() => setQr('')); }, [upi]);
-  useEffect(() => { setQuote(null); setCErr(''); }, [plan]);
+  // every plan change asks the server for the real price: upgrades get a credit for unused days of the current plan
+  useEffect(() => {
+    setCErr('');
+    if (!plan) return;
+    post(`/pay/${id}/quote`, { plan, coupon: quote?.coupon?.code }).then(setQuote).catch(() => setQuote(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+  const [ack, setAck] = useState(false); // fraud notice accepted this visit
 
   async function apply() {
     if (!code.trim()) return;
@@ -100,7 +107,8 @@ export default function PayClient({ id }: { id: string }) {
   async function submit() {
     setUErr('');
     const ref = utr.replace(/\s/g, '');
-    if (!/^[A-Za-z0-9]{10,24}$/.test(ref)) return setUErr('Enter the 12-digit UPI reference (UTR) from your payment app');
+    if (ref && !/^[A-Za-z0-9]{10,24}$/.test(ref)) return setUErr('That reference looks wrong (usually 12 digits). You can also leave it empty.');
+    if (!ack) return setAck(false);
     setBusy('submit');
     try {
       let ssUrl = '';
@@ -121,11 +129,13 @@ export default function PayClient({ id }: { id: string }) {
       const j = await post(`/pay/${id}/submit`, {
         plan,
         coupon: quote?.coupon ? quote.coupon.code : undefined,
-        utr: ref,
+        utr: ref || undefined,
         screenshotUrl: ssUrl || undefined,
+        fraudAck: true,
       });
       setV(j);
-      prevStatus.current = 'pending';
+      if (j.autoApproved) setCelebrate(true);
+      prevStatus.current = j.autoApproved ? 'verified' : 'pending';
     } catch (e: any) {
       setUErr(e.message);
     } finally {
@@ -168,10 +178,12 @@ export default function PayClient({ id }: { id: string }) {
     const disc = pay ? pay.discount : price?.discount || 0;
     const cc = pay ? pay.coupon : quote?.coupon?.code;
     if (disc > 0) lines.push({ label: `Coupon ${cc}`, value: `− ${inr(disc)}`, tone: 'good' });
-    if (pay) lines.push({ label: `UPI ref ${pay.utrRef}`, value: '', tone: 'muted' });
+    const credit = pay ? pay.credit || 0 : price && 'credit' in price ? (price as Quote).credit || 0 : 0;
+    if (credit > 0) lines.push({ label: `Unused ${pay ? pay.creditPlan : (price as Quote).creditPlan} days`, value: `− ${inr(credit)}`, tone: 'good' });
+    if (pay?.utrRef) lines.push({ label: `UPI ref ${pay.utrRef}`, value: '', tone: 'muted' });
     const seal: SealKind = pay?.status === 'verified' ? 'paid' : pay?.status === 'pending' ? 'verifying' : trial ? 'trial' : null;
     const note = pay?.status === 'verified' ? `${shown.name} is active till ${day(pay.paidUntil)}.`
-      : pay?.status === 'pending' ? 'We are matching your UPI reference. This page updates by itself.'
+      : pay?.status === 'pending' ? 'We are checking your payment. This page updates by itself.'
         : trial ? `Trial ends ${day(v.subscription.trialEndsAt)}. Then ${inr(price?.final || shown.price)} a month, only if you pay. No autopay.`
           : undefined;
     return {
@@ -235,13 +247,7 @@ export default function PayClient({ id }: { id: string }) {
                     <Download size={16} />
                     <span>{saving ? 'Saving…' : 'Download receipt (image)'}</span>
                   </button>
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-2 rounded-2xl bg-white/10 px-6 py-3.5 text-sm font-extrabold text-white hover:bg-white/15"
-                  >
-                    <Printer size={16} />
-                    <span>Print Receipt</span>
-                  </button>
+                  <a href="/app/" className="haldi flex items-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-extrabold"><Smartphone size={16} />Open the app</a>
                 </div>
               </motion.div>
             ) : waiting ? (
@@ -293,7 +299,7 @@ export default function PayClient({ id }: { id: string }) {
                     <label className="flex flex-1 items-center gap-2 rounded-2xl border border-white/12 bg-white/[.05] px-4">
                       <TicketPercent size={18} className="text-white/50" />
                       <input value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setCErr(''); }} onKeyDown={(e) => e.key === 'Enter' && apply()} placeholder="Coupon code" aria-label="Coupon code" className="h-12 w-full bg-transparent font-bold uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:text-white/35" />
-                      {quote && <button aria-label="Remove coupon" onClick={() => { setQuote(null); setCode(''); }}><X size={17} /></button>}
+                      {quote?.coupon && <button aria-label="Remove coupon" onClick={() => { setCode(''); post(`/pay/${id}/quote`, { plan }).then(setQuote).catch(() => setQuote(null)); }}><X size={17} /></button>}
                     </label>
                     <button onClick={apply} disabled={!code.trim() || busy === 'coupon'} className="rounded-2xl bg-white px-5 font-extrabold text-[#22152e] disabled:opacity-40">{busy === 'coupon' ? '…' : 'Apply'}</button>
                   </div>
@@ -358,15 +364,15 @@ export default function PayClient({ id }: { id: string }) {
                   )}
                 </Step>
 
-                <Step n={4} title="Paste reference & attach screenshot">
+                <Step n={4} title="Add the payment screenshot">
                   <p className="-mt-1 mb-3 text-sm text-white/55">
-                    After paying, enter the 12-digit UPI reference (UTR) from your payment app. You can also attach a screenshot for faster verification.
+                    Attach the payment screenshot: when it clearly shows our name, the amount and today’s date, your plan switches on instantly. The UPI reference is optional.
                   </p>
                   <input
                     value={utr}
                     onChange={(e) => { setUtr(e.target.value); setUErr(''); }}
                     inputMode="numeric"
-                    placeholder="e.g. 412345678901 (12-digit UTR)"
+                    placeholder="UPI reference (optional)"
                     aria-label="UPI reference number"
                     className="h-14 w-full rounded-2xl border border-white/12 bg-white/[.05] px-4 text-lg font-bold tracking-widest placeholder:font-medium placeholder:tracking-normal placeholder:text-white/30"
                   />
@@ -387,7 +393,7 @@ export default function PayClient({ id }: { id: string }) {
                       className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-[#f5b50a]/40 bg-[#f5b50a]/10 py-3.5 px-4 text-sm font-bold text-white transition-all hover:border-[#f5b50a] hover:bg-[#f5b50a]/20"
                     >
                       <UploadCloud size={18} className="text-[#f5b50a]" />
-                      <span>📸 Attach Payment Screenshot / Slip Proof (Recommended)</span>
+                      <span>Attach payment screenshot · approves instantly</span>
                     </button>
                   ) : (
                     <div className="mt-3 flex items-center justify-between rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-2.5 pr-4">
@@ -429,7 +435,7 @@ export default function PayClient({ id }: { id: string }) {
                     className="haldi mt-4 w-full rounded-2xl py-4 text-lg font-extrabold transition-transform active:scale-[.98] disabled:opacity-50"
                   >
                     {busy === 'submit'
-                      ? (uploadingSs ? 'Uploading screenshot…' : 'Submitting payment…')
+                      ? (uploadingSs ? 'Uploading screenshot…' : screenshot ? 'Checking your screenshot…' : 'Submitting payment…')
                       : `I have paid ${inr(price?.final || 0)}`}
                   </button>
                   <p className="mt-3 flex items-center gap-2 text-xs text-white/45">
@@ -442,6 +448,18 @@ export default function PayClient({ id }: { id: string }) {
         </div>
       </div>
       {celebrate && <Confetti onDone={() => setCelebrate(false)} />}
+      <AnimatePresence>
+        {!ack && !done && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 grid place-items-end bg-black/60 p-4 backdrop-blur-sm sm:place-items-center" role="dialog" aria-modal="true" aria-labelledby="fraud-title">
+            <motion.div initial={{ y: 40, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 40 }} transition={{ duration: 0.4, ease }} className="w-full max-w-md rounded-[28px] bg-white p-6 text-[#22152e] shadow-2xl">
+              <div className="grid size-12 place-items-center rounded-2xl bg-[#fde8e6] text-[#d12e1f]"><AlertTriangle size={24} /></div>
+              <h2 id="fraud-title" className="mt-4 font-display text-2xl font-extrabold">Before you pay</h2>
+              <p className="mt-2 text-[15px] leading-relaxed text-[#55505d]">Payments are checked automatically. <b className="text-[#22152e]">Any fraud, such as an edited or someone else’s screenshot, will suspend your service immediately</b> and the menu goes offline.</p>
+              <button onClick={() => setAck(true)} className="haldi mt-6 w-full rounded-2xl py-4 text-base font-extrabold">I understand, continue</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Shell>
   );
 }
@@ -451,7 +469,7 @@ function Shell({ children, brand = 'QR Menu Pro' }: { children: React.ReactNode;
     <div className="relative min-h-dvh overflow-hidden" style={{ background: 'radial-gradient(80% 60% at 80% 0%, #4a2b66 0%, transparent 60%), radial-gradient(60% 50% at 0% 100%, #3a2410 0%, transparent 60%), #180d24' }}>
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 text-white">
         <div className="flex items-center gap-2.5 font-display text-lg font-extrabold"><span className="haldi grid size-9 place-items-center rounded-xl text-base font-black">Q</span>{brand}</div>
-        <span className="flex items-center gap-1.5 text-xs font-bold text-white/55"><ShieldCheck size={15} />Secure checkout</span>
+        <div className="flex items-center gap-3"><span className="hidden items-center gap-1.5 text-xs font-bold text-white/55 sm:flex"><ShieldCheck size={15} />Secure checkout</span><a href="/app/" className="rounded-xl bg-white/10 px-3.5 py-2 text-xs font-extrabold text-white hover:bg-white/15">Back to the app</a></div>
       </header>
       {children}
     </div>
