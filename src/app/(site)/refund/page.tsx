@@ -1,4 +1,4 @@
-export const metadata = { title: 'Refund Policy — QR Menu Pro' };
+export const metadata = { title: 'Refund Policy', alternates: { canonical: '/refund' } };
 export default function Page() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">

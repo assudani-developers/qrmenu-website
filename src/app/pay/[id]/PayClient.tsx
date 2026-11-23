@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { Check, Copy, Crown, ShieldCheck, Smartphone, TicketPercent, X, Clock3, PartyPopper, AlertTriangle, Image as ImageIcon, UploadCloud, Download, Printer } from 'lucide-react';
 import { API } from '@/lib/api';
 import Parchi, { ParchiLine, SealKind } from '@/components/pay/Parchi';
+import { receiptPng, saveReceipt } from '@/lib/receiptImage';
 
 type PlanLite = { id: string; name: string; price: number; tagline: string; popular: boolean; badge: string };
 type View = {
@@ -133,57 +134,27 @@ export default function PayClient({ id }: { id: string }) {
     }
   }
 
-  const downloadSlip = () => {
-    if (!v || !p) return;
-    const pay = v.payment;
-    const activePlan = pay ? v.plans.find((x) => x.id === pay.planId) || p : p;
-    const finalAmount = pay ? pay.amount : price?.final || 0;
-    const currentUtr = pay?.utrRef || utr.trim() || 'NOT_SUBMITTED_YET';
-    const statusText = pay?.status === 'verified' ? 'VERIFIED & ACTIVE' : pay?.status === 'pending' ? 'PENDING VERIFICATION' : 'PAYMENT SLIP';
-    const slipId = pay?.id || `BILL-${v.id.slice(0, 8).toUpperCase()}`;
-    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-    const content = [
-      '======================================================',
-      '           QR MENU PRO · PAYMENT SLIP                 ',
-      '      Assudani Developers · assudanigroup@gmail.com   ',
-      '======================================================',
-      `Slip / Invoice:  ${slipId}`,
-      `Date & Time:     ${today}`,
-      `Status:          ${statusText}`,
-      '------------------------------------------------------',
-      'RESTAURANT DETAILS:',
-      `Restaurant:      ${v.restaurant.name}`,
-      `Owner Name:      ${v.restaurant.ownerName}`,
-      `Mobile:          +91 ${v.restaurant.phone}`,
-      `City:            ${v.restaurant.city || 'India'}`,
-      `Short ID:        ${v.restaurant.shortId}`,
-      '------------------------------------------------------',
-      'SUBSCRIPTION DETAILS:',
-      `Plan:            ${activePlan.name} Plan (30 Days Full Access)`,
-      `List Price:      ₹${pay ? pay.listPrice : activePlan.price}`,
-      `Coupon / Disc:   -₹${pay ? pay.discount : price?.discount || 0}`,
-      `TOTAL AMOUNT:    ₹${finalAmount}`,
-      'Payment Mode:    UPI Transfer',
-      `Payee UPI ID:    ${v.payee.upiId || '9413879444@yespop'}`,
-      `Payee Name:      ${v.payee.name || 'Piyush Assudani'}`,
-      `UPI Ref / UTR:   ${currentUtr}`,
-      ...(pay?.paidUntil ? [`Valid Until:     ${day(pay.paidUntil)}`] : []),
-      '======================================================',
-      'Thank you for partnering with QR Menu Pro!',
-      'Support: assudanigroup@gmail.com · Designed by Piyush Assudani',
-      '======================================================',
-    ].join('\n');
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `QRMenu_Slip_${slipId}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const [saving, setSaving] = useState(false);
+  /** The bill as a PNG picture — same parchi as on screen, with plan, coupon, UPI details and stamp. */
+  const downloadSlip = async () => {
+    if (!v || !receipt || saving) return;
+    setSaving(true);
+    try {
+      const pay = v.payment;
+      const code = pay?.id || `BILL-${v.id.slice(0, 8).toUpperCase()}`;
+      const details = [
+        { label: pay?.status === 'verified' ? 'Paid by UPI to' : 'UPI ID', value: v.payee.upiId || '' },
+        ...(v.payee.name ? [{ label: 'Payee', value: v.payee.name }] : []),
+        ...(pay?.utrRef || utr.trim() ? [{ label: 'UPI ref (UTR)', value: pay?.utrRef || utr.trim() }] : []),
+        ...(pay?.paidUntil ? [{ label: 'Valid till', value: day(pay.paidUntil) }] : []),
+      ].filter((r) => r.value);
+      const blob = await receiptPng({
+        brand: v.brandName, title: 'Subscription bill', meta: receipt.meta, lines: receipt.lines.filter((l) => !l.label.startsWith('UPI ref')),
+        details, total: receipt.total, totalLabel: receipt.totalLabel, note: receipt.note,
+        footer: 'No card · No autopay · Thank you', seal: receipt.seal, sealText: receipt.sealText, code,
+      });
+      await saveReceipt(blob, `${v.brandName.replace(/\W+/g, '-')}-bill-${code}.png`);
+    } finally { setSaving(false); }
   };
 
   const receipt = useMemo(() => {
@@ -232,10 +203,10 @@ export default function PayClient({ id }: { id: string }) {
               type="button"
               onClick={downloadSlip}
               className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[.08] px-3.5 py-2 text-xs font-bold text-white transition-all hover:bg-white/[.15]"
-              title="Download payment slip as text file"
+              title="Save the bill as a picture"
             >
               <Download size={14} className="text-[#f5b50a]" />
-              <span>Download Slip (.txt)</span>
+              <span>{saving ? 'Saving…' : 'Save bill as image'}</span>
             </button>
             <button
               type="button"
@@ -262,7 +233,7 @@ export default function PayClient({ id }: { id: string }) {
                     className="flex items-center gap-2 rounded-2xl border border-[#f5b50a] bg-[#f5b50a]/15 px-6 py-3.5 text-sm font-extrabold text-[#f5b50a] hover:bg-[#f5b50a]/25"
                   >
                     <Download size={16} />
-                    <span>Download Official Receipt</span>
+                    <span>{saving ? 'Saving…' : 'Download receipt (image)'}</span>
                   </button>
                   <button
                     onClick={() => window.print()}
@@ -284,7 +255,7 @@ export default function PayClient({ id }: { id: string }) {
                     className="flex items-center gap-2 rounded-2xl border border-[#f5b50a] bg-[#f5b50a]/15 px-6 py-3.5 text-sm font-extrabold text-[#f5b50a] hover:bg-[#f5b50a]/25"
                   >
                     <Download size={16} />
-                    <span>Download Payment Slip</span>
+                    <span>{saving ? 'Saving…' : 'Download slip (image)'}</span>
                   </button>
                   <button
                     onClick={() => window.print()}
@@ -347,12 +318,12 @@ export default function PayClient({ id }: { id: string }) {
                         <div className="w-full max-w-[190px] overflow-hidden rounded-2xl bg-white p-2.5 shadow-2xl ring-1 ring-white/20">
                           <img
                             src="/images/payment_qr.png"
-                            alt="Piyush Assudani UPI Payment QR"
+                            alt={`UPI QR for ${v.payee.name}`}
                             className="w-full h-auto rounded-xl object-contain"
                           />
                           <div className="mt-1.5 border-t border-slate-100 pt-1 text-center">
-                            <div className="text-[11px] font-black uppercase tracking-wider text-slate-900">PIYUSH ASSUDANI</div>
-                            <div className="text-[10px] font-semibold text-slate-500">9413879444@yespop</div>
+                            <div className="text-[11px] font-black uppercase tracking-wider text-slate-900">{v.payee.name}</div>
+                            <div className="text-[10px] font-semibold text-slate-500">{v.payee.upiId}</div>
                           </div>
                         </div>
                       </div>
@@ -363,16 +334,16 @@ export default function PayClient({ id }: { id: string }) {
                           </a>
                         )}
                         <p className="text-sm text-white/65">
-                          Scan this official QR with Google Pay, PhonePe, Paytm, BHIM, or your bank app. The payee name is <b className="text-white">PIYUSH ASSUDANI</b>.
+                          Scan this official QR with Google Pay, PhonePe, Paytm, BHIM, or your bank app. The payee name is <b className="text-white">{v.payee.name}</b>.
                         </p>
                         <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/12 bg-white/[.05] px-4 py-3">
                           <div className="min-w-0">
                             <div className="text-[11px] font-bold text-white/45">Or pay to UPI ID</div>
-                            <div className="truncate font-bold">{v.payee.upiId || '9413879444@yespop'}</div>
+                            <div className="truncate font-bold">{v.payee.upiId}</div>
                           </div>
                           <button
                             onClick={() => {
-                              navigator.clipboard?.writeText(v.payee.upiId || '9413879444@yespop');
+                              navigator.clipboard?.writeText(v.payee.upiId);
                               setCopied(true);
                               setTimeout(() => setCopied(false), 1600);
                             }}
@@ -448,7 +419,7 @@ export default function PayClient({ id }: { id: string }) {
                       className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f5b50a]/40 bg-[#f5b50a]/15 px-3 py-2 text-xs font-bold text-[#f5b50a] hover:bg-[#f5b50a]/25"
                     >
                       <Download size={13} />
-                      <span>Download Slip</span>
+                      <span>{saving ? 'Saving…' : 'Save as image'}</span>
                     </button>
                   </div>
 

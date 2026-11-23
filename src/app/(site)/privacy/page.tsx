@@ -1,4 +1,4 @@
-export const metadata = { title: 'Privacy Policy — QR Menu Pro' };
+export const metadata = { title: 'Privacy Policy', alternates: { canonical: '/privacy' } };
 export default function Page() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">

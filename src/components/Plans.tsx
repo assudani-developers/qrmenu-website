@@ -1,158 +1,57 @@
-'use client';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Check, Lock, Crown, Sparkles, ShieldCheck } from 'lucide-react';
-import { bullets, Catalog, DEFAULT_CATALOG, fetchCatalog } from '@/lib/api';
+import { Check, Crown, Lock, ShieldCheck } from 'lucide-react';
+import { bullets, fetchCatalog } from '@/lib/api';
+import Reveal from './Reveal';
 
-/** Live plans from the platform database with zero-delay static fallback */
-export default function Plans() {
-  const [c, setC] = useState<Catalog>(DEFAULT_CATALOG);
-  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
-
-  useEffect(() => {
-    fetchCatalog().then((res) => {
-      if (res?.plans?.length) setC(res);
-    });
-  }, []);
-
+/** The three plans, live from the database (server-rendered, refreshed every minute). The plan marked
+ *  "best value" in the admin panel gets the dark hero card. */
+export default async function Plans() {
+  const c = await fetchCatalog();
+  if (!c) {
+    return (
+      <div className="card mx-auto max-w-lg p-8 text-center">
+        <p className="font-extrabold">Plans could not be loaded right now.</p>
+        <p className="mt-1 text-sm text-muted">Refresh in a minute, or open the app to see every plan and price.</p>
+        <Link href="/download" className="mt-5 inline-block rounded-2xl bg-ink px-6 py-3 text-sm font-extrabold text-white">Get the app</Link>
+      </div>
+    );
+  }
+  const trial = c.trialEnabled !== false && c.trialDays > 0;
   return (
-    <div className="space-y-8">
-      {/* 7-Day Free Trial & No Autopay Banner */}
-      <div className="mx-auto max-w-2xl rounded-2xl border border-amber-300/60 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-amber-500/10 p-4 text-center shadow-sm">
-        <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-extrabold text-amber-900">
-          <Sparkles className="size-4 text-amber-600" />
-          <span>7 Days 100% Free Trial On All Plans</span>
-          <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs text-amber-800">No Credit Card</span>
-          <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-800">Zero Autopay</span>
-        </div>
-        <p className="mt-1 text-xs text-amber-900/80">
-          Experience live QR ordering, kitchen display, inventory, and digital menu free for 7 days. Bina autopay ya deduction ke!
+    <div>
+      {trial && (
+        <p className="mx-auto mb-12 flex w-fit flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-white px-5 py-2 text-sm font-bold text-muted shadow-sm">
+          <span className="size-2 rounded-full bg-mint" />{c.trialDays} days free on every plan<span className="text-faint">No card</span><span className="text-faint">No autopay</span>
         </p>
-      </div>
-
-      {/* Monthly / Yearly Billing Toggle */}
-      <div className="flex items-center justify-center gap-3">
-        <span className={`text-sm font-bold ${billing === 'monthly' ? 'text-ink' : 'text-muted'}`}>Monthly</span>
-        <button
-          type="button"
-          onClick={() => setBilling(billing === 'monthly' ? 'yearly' : 'monthly')}
-          className="relative inline-flex h-8 w-14 items-center rounded-full bg-black/10 p-1 transition-colors hover:bg-black/15 focus:outline-none"
-          aria-label="Toggle billing interval"
-        >
-          <span
-            className={`inline-block size-6 rounded-full bg-gold shadow-md transition-transform duration-200 ${
-              billing === 'yearly' ? 'translate-x-6' : 'translate-x-0'
-            }`}
-          />
-        </button>
-        <span className={`flex items-center gap-1.5 text-sm font-bold ${billing === 'yearly' ? 'text-ink' : 'text-muted'}`}>
-          Yearly
-          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">Save 20% (2 Months Free)</span>
-        </span>
-      </div>
-
-      {/* 4 Plan Cards */}
-      <div className="grid items-stretch gap-5 md:grid-cols-2 lg:grid-cols-4">
+      )}
+      <div className="grid items-stretch gap-5 md:grid-cols-3">
         {c.plans.map((p, i) => {
-          const isMaster = p.id === 'master';
-          const isGrowth = p.popular || p.id === 'growth';
-          const isUltra = p.id === 'ultra';
-          const monthlyPrice = p.price;
-          const annualMonthlyEquivalent = Math.round(monthlyPrice * 0.8);
-          const annualTotal = monthlyPrice * 10;
-          const displayPrice = billing === 'yearly' ? annualMonthlyEquivalent : monthlyPrice;
+          const hero = !!p.popular;
           const list = bullets(p, c.featureCatalog);
-
           return (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.07, ease: [0.2, 0.8, 0.2, 1] }}
-              className={`relative flex flex-col rounded-[28px] p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
-                isMaster
-                  ? 'bg-gradient-to-b from-[#2E102E] to-[#160A18] text-white shadow-[0_20px_60px_rgba(217,70,239,0.25)] border-2 border-fuchsia-500/60'
-                  : isGrowth
-                  ? 'jamun shadow-[0_30px_80px_-20px_rgba(34,21,46,.55)] border-2 border-amber-400'
-                  : 'card'
-              }`}
-            >
-              {isMaster && (
-                <span className="absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-fuchsia-600 to-pink-500 px-3.5 py-1 text-xs font-extrabold text-white shadow-lg">
-                  <Crown size={13} />FLAGSHIP 👑
-                </span>
-              )}
-              {isGrowth && !isMaster && (
-                <span className="haldi absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-extrabold shadow-lg">
-                  <Crown size={13} />RECOMMENDED
-                </span>
-              )}
-              {isUltra && (
-                <span className="absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3.5 py-1 text-xs font-extrabold text-white shadow-lg">
-                  INVENTORY 📦
-                </span>
-              )}
-
-              <div className={`font-display text-2xl font-extrabold ${isMaster ? 'text-fuchsia-300' : isGrowth ? 'text-lux' : ''}`}>
-                {p.name}
+            <Reveal key={p.id} delay={i * 0.08}
+              className={`relative flex h-full flex-col rounded-[30px] p-7 ${hero ? 'jamun shadow-[0_40px_90px_-30px_rgba(34,21,46,.7)] ring-2 ring-[#f2cd7a]/60 md:-my-4 md:py-11' : 'card'}`}>
+              {hero && <span className="haldi absolute -top-3.5 left-7 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-extrabold shadow-lg"><Crown size={13} />{p.badge || 'Best value'}</span>}
+              <div className={`font-display text-2xl font-extrabold ${hero ? 'text-lux' : ''}`}>{p.name}</div>
+              <p className={`mt-1 text-sm ${hero ? 'text-white/70' : 'text-muted'}`}>{p.tagline}</p>
+              <div className="mt-5 flex items-end gap-1">
+                <span className="font-display text-5xl font-extrabold leading-none">₹{p.price}</span>
+                <span className={`pb-1 text-sm ${hero ? 'text-white/60' : 'text-muted'}`}>/ month</span>
               </div>
-              <p className={`mt-1 text-xs font-semibold ${isMaster || isGrowth ? 'text-white/70' : 'text-muted'}`}>
-                {p.tagline}
-              </p>
-
-              <div className="mt-4 flex items-end gap-1">
-                <span className="font-display text-5xl font-extrabold leading-none">₹{displayPrice}</span>
-                <span className={`pb-1 text-xs ${isMaster || isGrowth ? 'text-white/60' : 'text-muted'}`}>/ month</span>
-              </div>
-              {billing === 'yearly' && (
-                <div className="mt-1 text-[11px] font-semibold text-emerald-600">
-                  ₹{annualTotal}/yr (2 months free!)
-                </div>
-              )}
-
-              {p.bestFor && (
-                <p className={`mt-2 text-xs ${isMaster || isGrowth ? 'text-white/60' : 'text-muted'}`}>
-                  For {p.bestFor.toLowerCase()}
-                </p>
-              )}
-
-              <ul className="my-6 flex-1 space-y-2">
+              {p.bestFor && <p className={`mt-2 text-xs ${hero ? 'text-white/60' : 'text-muted'}`}>For {p.bestFor.toLowerCase()}</p>}
+              <ul className="my-7 flex-1 space-y-2.5">
                 {list.map((b) => (
-                  <li
-                    key={b.text}
-                    className={`flex items-start gap-2 text-xs font-semibold ${
-                      b.on ? '' : isMaster || isGrowth ? 'text-white/35' : 'text-faint/70'
-                    }`}
-                  >
-                    {b.on ? (
-                      <Check size={15} className={`mt-0.5 shrink-0 ${isMaster ? 'text-fuchsia-400' : isGrowth ? 'text-lux' : 'text-mint'}`} />
-                    ) : (
-                      <Lock size={13} className="mt-0.5 shrink-0 opacity-40" />
-                    )}
+                  <li key={b.text} className={`flex items-start gap-2.5 text-sm font-semibold ${b.on ? '' : hero ? 'text-white/35' : 'text-faint/70'}`}>
+                    {b.on ? <Check size={16} className={`mt-0.5 shrink-0 ${hero ? 'text-lux' : 'text-mint'}`} /> : <Lock size={14} className="mt-0.5 shrink-0 opacity-50" />}
                     <span>{b.text}</span>
                   </li>
                 ))}
               </ul>
-
-              <Link
-                href="/download"
-                className={`rounded-2xl py-3.5 text-center text-sm font-extrabold transition-transform hover:-translate-y-0.5 ${
-                  isMaster
-                    ? 'bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white shadow-md'
-                    : isGrowth
-                    ? 'haldi shadow-[0_14px_30px_-10px_rgba(245,181,10,.7)]'
-                    : 'bg-ink text-white'
-                }`}
-              >
-                {c.trialEnabled && c.trialDays > 0 ? `Try ${p.name} free for ${c.trialDays} days` : `Get ${p.name}`}
+              <Link href="/download" className={`rounded-2xl py-3.5 text-center font-extrabold transition-transform hover:-translate-y-0.5 ${hero ? 'haldi shadow-[0_14px_30px_-10px_rgba(245,181,10,.7)]' : 'bg-ink text-white'}`}>
+                {trial ? `Start ${p.name} free` : `Get ${p.name}`}
               </Link>
-              <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-muted">
-                <ShieldCheck size={12} className="text-emerald-600" />
-                <span>Zero autopay • No card required</span>
-              </div>
-            </motion.div>
+              <p className={`mt-3 flex items-center justify-center gap-1.5 text-xs ${hero ? 'text-white/55' : 'text-muted'}`}><ShieldCheck size={13} />Pay by UPI only when you choose to</p>
+            </Reveal>
           );
         })}
       </div>

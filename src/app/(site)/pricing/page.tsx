@@ -1,7 +1,7 @@
 import Plans from '@/components/Plans';
 import LeadForm from '@/components/LeadForm';
 
-export const metadata = { title: 'Pricing — QR Menu Pro' };
+export const metadata = { title: 'Pricing', description: 'Starter, Growth and Ultra plans for your restaurant QR menu. Unlimited dishes and scans, free trial, pay monthly by UPI, no autopay.', alternates: { canonical: '/pricing' } };
 export default function Pricing() {
   return (
     <main className="mx-auto max-w-6xl px-5 py-16">

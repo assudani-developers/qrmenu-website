@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Logo from './Logo';
 
-const links = [['/', 'Home'], ['/pricing', 'Pricing'], ['/download', 'Get the app'], ['/contact', 'Contact']];
+const links = [['/', 'Home'], ['/designs', 'Designs'], ['/pricing', 'Pricing'], ['/download', 'Get the app'], ['/contact', 'Contact']];
 
 export default function Nav() {
   return (

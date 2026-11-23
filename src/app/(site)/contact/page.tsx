@@ -1,6 +1,6 @@
 import LeadForm from '@/components/LeadForm';
 
-export const metadata = { title: 'Contact — QR Menu Pro' };
+export const metadata = { title: 'Contact', description: 'Talk to the QR Menu Pro team about menus, plans, printing your QR or anything else.', alternates: { canonical: '/contact' } };
 export default function Contact() {
   return (
     <main className="mx-auto max-w-xl px-5 py-16">

@@ -1,4 +1,4 @@
-export const metadata = { title: 'Terms of Service — QR Menu Pro' };
+export const metadata = { title: 'Terms of Service', alternates: { canonical: '/terms' } };
 export default function Page() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">
