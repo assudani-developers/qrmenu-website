@@ -42,6 +42,7 @@ export default function PayClient({ id }: { id: string }) {
   const [preview, setPreview] = useState<string>('');
   const [uploadingSs, setUploadingSs] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
   const [qr, setQr] = useState('');
   const [mobile, setMobile] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -52,7 +53,10 @@ export default function PayClient({ id }: { id: string }) {
     try {
       const r = await fetch(`${API}/api/pay/${id}`, { cache: 'no-store' });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.message || 'This payment link has expired');
+      if (!r.ok) {
+        if (j.settled) throw new Error('SETTLED:' + (j.message || 'This bill has already been settled and your plan is active.'));
+        throw new Error(j.message || 'This payment link has expired');
+      }
       setV(j);
       if (first) setPlan(j.payment?.planId || j.plan);
       const st = j.payment?.status || null;
@@ -195,7 +199,25 @@ export default function PayClient({ id }: { id: string }) {
     };
   }, [v, p, price, quote]);
 
-  if (err) return <Shell><Notice icon={AlertTriangle} title="Link expired" body={`${err} Open the app and tap Renew to get a fresh link.`} /></Shell>;
+  if (err) {
+    const isSettled = err.startsWith('SETTLED:');
+    return (
+      <Shell>
+        <Notice
+          icon={isSettled ? Check : AlertTriangle}
+          title={isSettled ? 'Bill already settled' : 'Link expired'}
+          body={isSettled ? err.replace('SETTLED:', '') : `${err} Open the app and tap Renew to get a fresh link.`}
+          action={
+            <div className="mt-6 flex justify-center">
+              <a href="/app/" className="haldi inline-flex items-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-extrabold text-[#22152e]">
+                <Smartphone size={16} /> Open QR Menu App
+              </a>
+            </div>
+          }
+        />
+      </Shell>
+    );
+  }
   if (!v || !p || !receipt) return <Shell><div className="mx-auto mt-24 size-10 animate-spin rounded-full border-4 border-white/20 border-t-[#f5b50a]" /></Shell>;
 
   const pay = v.payment;
@@ -256,6 +278,15 @@ export default function PayClient({ id }: { id: string }) {
                 <h1 className="mt-4 font-display text-5xl font-extrabold leading-[1.02]">Checking your payment</h1>
                 <p className="mt-4 max-w-md text-lg text-white/70">We are matching UPI reference <b className="text-white">{pay!.utrRef}</b> with our bank. This usually takes under an hour. You can close this page: the app will tell you the moment it is done.</p>
                 <div className="mt-6 flex flex-wrap gap-3">
+                  <a
+                    href="/app/"
+                    onClick={() => {
+                      try { window.close(); } catch (_) {}
+                    }}
+                    className="haldi flex items-center gap-2 rounded-2xl px-6 py-3.5 text-sm font-extrabold text-[#22152e]"
+                  >
+                    <Smartphone size={16} /> Return to app
+                  </a>
                   <button
                     onClick={downloadSlip}
                     className="flex items-center gap-2 rounded-2xl border border-[#f5b50a] bg-[#f5b50a]/15 px-6 py-3.5 text-sm font-extrabold text-[#f5b50a] hover:bg-[#f5b50a]/25"
@@ -298,7 +329,7 @@ export default function PayClient({ id }: { id: string }) {
                   <div className="flex gap-2">
                     <label className="flex flex-1 items-center gap-2 rounded-2xl border border-white/12 bg-white/[.05] px-4">
                       <TicketPercent size={18} className="text-white/50" />
-                      <input value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setCErr(''); }} onKeyDown={(e) => e.key === 'Enter' && apply()} placeholder="Coupon code" aria-label="Coupon code" className="h-12 w-full bg-transparent font-bold uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:text-white/35" />
+                      <input value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setCErr(''); }} onKeyDown={(e) => e.key === 'Enter' && apply()} placeholder="Coupon code" aria-label="Coupon code" className="h-12 w-full bg-transparent text-[16px] font-bold uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal placeholder:text-white/35" />
                       {quote?.coupon && <button aria-label="Remove coupon" onClick={() => { setCode(''); post(`/pay/${id}/quote`, { plan }).then(setQuote).catch(() => setQuote(null)); }}><X size={17} /></button>}
                     </label>
                     <button onClick={apply} disabled={!code.trim() || busy === 'coupon'} className="rounded-2xl bg-white px-5 font-extrabold text-[#22152e] disabled:opacity-40">{busy === 'coupon' ? '…' : 'Apply'}</button>
@@ -415,29 +446,32 @@ export default function PayClient({ id }: { id: string }) {
                     </div>
                   )}
 
-                  <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
-                    <div className="text-xs text-white/70">
-                      <span className="font-bold text-white">Need a payment slip?</span> Download your slip with your UTR.
-                    </div>
-                    <button
-                      type="button"
-                      onClick={downloadSlip}
-                      className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f5b50a]/40 bg-[#f5b50a]/15 px-3 py-2 text-xs font-bold text-[#f5b50a] hover:bg-[#f5b50a]/25"
-                    >
-                      <Download size={13} />
-                      <span>{saving ? 'Saving…' : 'Save as image'}</span>
-                    </button>
-                  </div>
+                  <label className="mt-4 flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[.04] p-3.5 cursor-pointer text-left transition-all hover:bg-white/[.07]">
+                    <input
+                      type="checkbox"
+                      checked={disclaimerChecked}
+                      onChange={(e) => setDisclaimerChecked(e.target.checked)}
+                      className="mt-0.5 size-4 rounded border-white/30 text-[#f5b50a] focus:ring-0 cursor-pointer"
+                    />
+                    <span className="text-[11px] leading-relaxed text-white/70">
+                      Agar payment kisi bhi karan hamare bank me credit nahi hua ya verify nahi ho paya, toh hamari team aapse contact karegi. Agar aapse contact nahi ho pata hai toh subscription cancel kar di jayegi.
+                    </span>
+                  </label>
 
                   <button
                     onClick={submit}
-                    disabled={busy === 'submit' || !v.payee.upiId}
-                    className="haldi mt-4 w-full rounded-2xl py-4 text-lg font-extrabold transition-transform active:scale-[.98] disabled:opacity-50"
+                    disabled={busy === 'submit' || !v.payee.upiId || !disclaimerChecked}
+                    className="haldi mt-4 w-full rounded-2xl py-4 text-lg font-extrabold transition-transform active:scale-[.98] disabled:opacity-40"
                   >
                     {busy === 'submit'
                       ? (uploadingSs ? 'Uploading screenshot…' : screenshot ? 'Checking your screenshot…' : 'Submitting payment…')
                       : `I have paid ${inr(price?.final || 0)}`}
                   </button>
+                  {!disclaimerChecked && (
+                    <p className="mt-2 text-center text-[11px] text-[#f5b50a]/80">
+                      * Please check the box above to confirm payment submission
+                    </p>
+                  )}
                   <p className="mt-3 flex items-center gap-2 text-xs text-white/45">
                     <ShieldCheck size={14} />We never ask for your UPI PIN, card or bank login.
                   </p>
@@ -485,12 +519,13 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   );
 }
 
-function Notice({ icon: I, title, body }: { icon: any; title: string; body: string }) {
+function Notice({ icon: I, title, body, action }: { icon: any; title: string; body: string; action?: React.ReactNode }) {
   return (
     <div className="mx-auto mt-24 max-w-md px-6 text-center text-white">
       <I className="mx-auto text-[#ffcf4a]" size={44} />
       <h1 className="mt-5 font-display text-4xl font-extrabold">{title}</h1>
       <p className="mt-3 text-white/65">{body}</p>
+      {action}
     </div>
   );
 }

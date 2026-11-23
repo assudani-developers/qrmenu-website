@@ -8,7 +8,7 @@ import { Addon, BADGE, CartLine, DIET, Dish, MenuData, Variant, inr, onColor, ph
 
 const btn = 'inline-flex items-center justify-center gap-2 rounded-[calc(var(--r)*.8)] px-5 py-3.5 font-extrabold transition-transform active:scale-[.97] disabled:opacity-50';
 const primaryBtn = { background: 'var(--p)', color: 'var(--onp)' } as const;
-const field = 'w-full rounded-2xl px-4 py-3.5 text-[15px] font-semibold';
+const field = 'w-full rounded-2xl px-4 py-3.5 text-[16px] font-semibold';
 const fieldStyle = { background: 'var(--soft)', color: 'var(--tx)', border: '1px solid var(--line)' } as const;
 
 export function VegMark({ veg, size = 15 }: { veg: boolean; size?: number }) {

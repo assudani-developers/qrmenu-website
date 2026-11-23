@@ -390,13 +390,14 @@ function Info({ data, table, onCall, onBook, onRate }: { data: MenuData; table: 
   const s = r.social || {};
   const [copied, setCopied] = useState(false);
   const links = [
-    s.instagram && { href: s.instagram.startsWith('http') ? s.instagram : `https://instagram.com/${s.instagram.replace('@', '')}`, icon: AtSign, label: 'Instagram' },
-    s.whatsapp && { href: `https://wa.me/${s.whatsapp.replace(/\D/g, '').replace(/^(?=\d{10}$)/, '91')}`, icon: MessageCircle, label: 'WhatsApp' },
-    s.facebook && { href: s.facebook, icon: Share2, label: 'Facebook' },
-    s.maps && { href: s.maps, icon: Navigation, label: 'Directions' },
-    s.website && { href: s.website, icon: Globe, label: 'Website' },
-    r.phone && { href: `tel:${r.phone}`, icon: Phone, label: 'Call' },
-  ].filter(Boolean) as { href: string; icon: any; label: string }[];
+    s.instagram && { href: s.instagram.startsWith('http') ? s.instagram : `https://instagram.com/${s.instagram.replace('@', '')}`, icon: AtSign, label: 'Instagram', color: '#E1306C' },
+    s.whatsapp && { href: `https://wa.me/${s.whatsapp.replace(/\D/g, '').replace(/^(?=\d{10}$)/, '91')}`, icon: MessageCircle, label: 'WhatsApp', color: '#25D366' },
+    s.facebook && { href: s.facebook, icon: Share2, label: 'Facebook', color: '#1877F2' },
+    s.maps && { href: s.maps, icon: Navigation, label: 'Directions', color: '#EA4335' },
+    (r as any).googleReviewUrl && { href: (r as any).googleReviewUrl, icon: Star, label: 'Google Review', color: '#FBBC05' },
+    s.website && { href: s.website, icon: Globe, label: 'Website', color: '#6366F1' },
+    r.phone && { href: `tel:${r.phone}`, icon: Phone, label: 'Call', color: '#10B981' },
+  ].filter(Boolean) as { href: string; icon: any; label: string; color?: string }[];
   const wifi = r.store?.wifiName;
   return (
     <div className="mt-14 space-y-3">
@@ -427,7 +428,7 @@ function Info({ data, table, onCall, onBook, onRate }: { data: MenuData; table: 
         <div className="flex flex-wrap justify-center gap-2 pt-2">
           {links.map((l) => (
             <a key={l.label} href={l.href} target="_blank" rel="noopener" className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-extrabold transition-transform active:scale-95" style={{ background: 'var(--sf)', border: '1px solid var(--line)' }}>
-              <l.icon size={16} style={{ color: 'var(--p)' }} />{l.label}
+              <l.icon size={16} style={{ color: l.color || 'var(--p)' }} />{l.label}
             </a>
           ))}
         </div>
