@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root { --bg: #faf7f2; --surface: #fff; --line: #e9e1d4; --ink: #1c1826; --muted: #7b7488; --gold: #c77d0a; --gold2: #e59a2f; }
+@theme inline {
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, serif;
+  --color-bg: var(--bg); --color-line: var(--line); --color-ink: var(--ink); --color-muted: var(--muted); --color-gold: var(--gold);
+}
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-jakarta), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.gold-grad { background: linear-gradient(135deg, #ffd98a, #e59a2f); }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 28px; box-shadow: 0 14px 40px rgba(138,106,43,.08); }
+.glow { position: absolute; border-radius: 999px; filter: blur(110px); opacity: .18; pointer-events: none; }
+input, select, textarea { outline: none; }
