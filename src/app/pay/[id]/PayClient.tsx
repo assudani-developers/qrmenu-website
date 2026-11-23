@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import QRCode from 'qrcode';
-import { Check, Copy, Crown, ShieldCheck, Smartphone, TicketPercent, X, Clock3, PartyPopper, AlertTriangle, Image as ImageIcon, UploadCloud } from 'lucide-react';
+import { Check, Copy, Crown, ShieldCheck, Smartphone, TicketPercent, X, Clock3, PartyPopper, AlertTriangle, Image as ImageIcon, UploadCloud, Download, Printer } from 'lucide-react';
 import { API } from '@/lib/api';
 import Parchi, { ParchiLine, SealKind } from '@/components/pay/Parchi';
 
@@ -133,6 +133,59 @@ export default function PayClient({ id }: { id: string }) {
     }
   }
 
+  const downloadSlip = () => {
+    if (!v || !p) return;
+    const pay = v.payment;
+    const activePlan = pay ? v.plans.find((x) => x.id === pay.planId) || p : p;
+    const finalAmount = pay ? pay.amount : price?.final || 0;
+    const currentUtr = pay?.utrRef || utr.trim() || 'NOT_SUBMITTED_YET';
+    const statusText = pay?.status === 'verified' ? 'VERIFIED & ACTIVE' : pay?.status === 'pending' ? 'PENDING VERIFICATION' : 'PAYMENT SLIP';
+    const slipId = pay?.id || `BILL-${v.id.slice(0, 8).toUpperCase()}`;
+    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    const content = [
+      '======================================================',
+      '           QR MENU PRO · PAYMENT SLIP                 ',
+      '      Assudani Developers · assudanigroup@gmail.com   ',
+      '======================================================',
+      `Slip / Invoice:  ${slipId}`,
+      `Date & Time:     ${today}`,
+      `Status:          ${statusText}`,
+      '------------------------------------------------------',
+      'RESTAURANT DETAILS:',
+      `Restaurant:      ${v.restaurant.name}`,
+      `Owner Name:      ${v.restaurant.ownerName}`,
+      `Mobile:          +91 ${v.restaurant.phone}`,
+      `City:            ${v.restaurant.city || 'India'}`,
+      `Short ID:        ${v.restaurant.shortId}`,
+      '------------------------------------------------------',
+      'SUBSCRIPTION DETAILS:',
+      `Plan:            ${activePlan.name} Plan (30 Days Full Access)`,
+      `List Price:      ₹${pay ? pay.listPrice : activePlan.price}`,
+      `Coupon / Disc:   -₹${pay ? pay.discount : price?.discount || 0}`,
+      `TOTAL AMOUNT:    ₹${finalAmount}`,
+      'Payment Mode:    UPI Transfer',
+      `Payee UPI ID:    ${v.payee.upiId || '9413879444@yespop'}`,
+      `Payee Name:      ${v.payee.name || 'Piyush Assudani'}`,
+      `UPI Ref / UTR:   ${currentUtr}`,
+      ...(pay?.paidUntil ? [`Valid Until:     ${day(pay.paidUntil)}`] : []),
+      '======================================================',
+      'Thank you for partnering with QR Menu Pro!',
+      'Support: assudanigroup@gmail.com · Designed by Piyush Assudani',
+      '======================================================',
+    ].join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `QRMenu_Slip_${slipId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const receipt = useMemo(() => {
     if (!v || !p) return null;
     const pay = v.payment;
@@ -170,8 +223,30 @@ export default function PayClient({ id }: { id: string }) {
     <Shell brand={v.brandName}>
       <div className="mx-auto grid max-w-6xl items-start gap-10 px-5 pb-20 pt-6 lg:grid-cols-[1fr_1.05fr] lg:gap-16 lg:pt-12">
         <div className="lg:sticky lg:top-10">
-          <Parchi brand={v.brandName} title="Subscription bill" meta={receipt.meta} lines={receipt.lines} total={receipt.total} totalLabel={receipt.totalLabel}
-            note={receipt.note} seal={receipt.seal} sealText={receipt.sealText} footer="No card · No autopay · Thank you for choosing us" printKey={id} />
+          <div className="print-area">
+            <Parchi brand={v.brandName} title="Subscription bill" meta={receipt.meta} lines={receipt.lines} total={receipt.total} totalLabel={receipt.totalLabel}
+              note={receipt.note} seal={receipt.seal} sealText={receipt.sealText} footer="No card · No autopay · Thank you for choosing us" printKey={id} />
+          </div>
+          <div className="no-print mt-3 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={downloadSlip}
+              className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[.08] px-3.5 py-2 text-xs font-bold text-white transition-all hover:bg-white/[.15]"
+              title="Download payment slip as text file"
+            >
+              <Download size={14} className="text-[#f5b50a]" />
+              <span>Download Slip (.txt)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[.08] px-3.5 py-2 text-xs font-bold text-white transition-all hover:bg-white/[.15]"
+              title="Print or save as PDF"
+            >
+              <Printer size={14} className="text-[#f5b50a]" />
+              <span>Print / Save PDF</span>
+            </button>
+          </div>
         </div>
 
         <div className="text-white">
@@ -181,12 +256,44 @@ export default function PayClient({ id }: { id: string }) {
                 <PartyPopper className="text-[#ffcf4a]" size={40} />
                 <h1 className="mt-4 font-display text-5xl font-extrabold leading-[1.02]">Payment received.</h1>
                 <p className="mt-4 max-w-md text-lg text-white/70">Your {v.plans.find((x) => x.id === pay!.planId)?.name} plan is active till {day(pay!.paidUntil)}. Go back to the app: everything is already unlocked.</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    onClick={downloadSlip}
+                    className="flex items-center gap-2 rounded-2xl border border-[#f5b50a] bg-[#f5b50a]/15 px-6 py-3.5 text-sm font-extrabold text-[#f5b50a] hover:bg-[#f5b50a]/25"
+                  >
+                    <Download size={16} />
+                    <span>Download Official Receipt</span>
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 rounded-2xl bg-white/10 px-6 py-3.5 text-sm font-extrabold text-white hover:bg-white/15"
+                  >
+                    <Printer size={16} />
+                    <span>Print Receipt</span>
+                  </button>
+                </div>
               </motion.div>
             ) : waiting ? (
               <motion.div key="wait" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }}>
                 <Clock3 className="text-[#ffcf4a]" size={40} />
                 <h1 className="mt-4 font-display text-5xl font-extrabold leading-[1.02]">Checking your payment</h1>
                 <p className="mt-4 max-w-md text-lg text-white/70">We are matching UPI reference <b className="text-white">{pay!.utrRef}</b> with our bank. This usually takes under an hour. You can close this page: the app will tell you the moment it is done.</p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    onClick={downloadSlip}
+                    className="flex items-center gap-2 rounded-2xl border border-[#f5b50a] bg-[#f5b50a]/15 px-6 py-3.5 text-sm font-extrabold text-[#f5b50a] hover:bg-[#f5b50a]/25"
+                  >
+                    <Download size={16} />
+                    <span>Download Payment Slip</span>
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 rounded-2xl bg-white/10 px-6 py-3.5 text-sm font-extrabold text-white hover:bg-white/15"
+                  >
+                    <Printer size={16} />
+                    <span>Print Slip</span>
+                  </button>
+                </div>
               </motion.div>
             ) : (
               <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -306,18 +413,18 @@ export default function PayClient({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border border-dashed border-white/20 bg-white/[.03] py-3.5 px-4 text-sm font-bold text-white/80 transition-all hover:border-[#f5b50a] hover:bg-white/[.07]"
+                      className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-[#f5b50a]/40 bg-[#f5b50a]/10 py-3.5 px-4 text-sm font-bold text-white transition-all hover:border-[#f5b50a] hover:bg-[#f5b50a]/20"
                     >
                       <UploadCloud size={18} className="text-[#f5b50a]" />
-                      <span>Attach Payment Screenshot (optional)</span>
+                      <span>📸 Attach Payment Screenshot / Slip Proof (Recommended)</span>
                     </button>
                   ) : (
-                    <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/15 bg-white/[.06] p-2.5 pr-4">
+                    <div className="mt-3 flex items-center justify-between rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-2.5 pr-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <img src={preview} alt="Screenshot proof preview" className="size-12 shrink-0 rounded-xl object-cover ring-1 ring-white/20" />
+                        <img src={preview} alt="Screenshot proof preview" className="size-12 shrink-0 rounded-xl object-cover ring-2 ring-emerald-400" />
                         <div className="min-w-0 text-left">
                           <div className="truncate text-xs font-bold text-white">{screenshot?.name || 'Screenshot'}</div>
-                          <div className="text-[11px] font-semibold text-emerald-400">Proof attached · ready to send</div>
+                          <div className="text-[11px] font-bold text-emerald-400">✓ Proof attached · Ready to submit with UTR</div>
                         </div>
                       </div>
                       <button
@@ -330,6 +437,20 @@ export default function PayClient({ id }: { id: string }) {
                       </button>
                     </div>
                   )}
+
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
+                    <div className="text-xs text-white/70">
+                      <span className="font-bold text-white">Need a payment slip?</span> Download your slip with your UTR.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={downloadSlip}
+                      className="flex shrink-0 items-center gap-1.5 rounded-xl border border-[#f5b50a]/40 bg-[#f5b50a]/15 px-3 py-2 text-xs font-bold text-[#f5b50a] hover:bg-[#f5b50a]/25"
+                    >
+                      <Download size={13} />
+                      <span>Download Slip</span>
+                    </button>
+                  </div>
 
                   <button
                     onClick={submit}
