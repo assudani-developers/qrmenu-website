@@ -3,7 +3,8 @@
 <head>
   <base href="/app/">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- maximum-scale stops iOS zooming into fields; resizes-content keeps the keyboard from pushing the page around -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="description" content="Run your restaurant's QR menu, live orders and tables from your phone.">
   <meta name="theme-color" content="#22152E">
 
@@ -18,7 +19,11 @@
   <link rel="manifest" href="manifest.json">
   <title>QR Menu Pro — Owner</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #EEF0EB; overscroll-behavior: none; }
+    html, body { margin: 0; width: 100%; height: 100%; background: #EEF0EB; overflow: hidden; overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+    /* iPhone Safari: avoid position:fixed on body which clashes with visualViewport keyboard resize */
+    body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+    flt-glass-pane, flutter-view { width: 100%; height: 100%; touch-action: manipulation; }
+    input, textarea { font-size: 16px !important; }
     /* branded splash while the app loads, so a slow network never looks like a blank or frozen page */
     #splash { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(80% 60% at 80% 0%, #4a2b66 0%, transparent 60%), #180D24; transition: opacity .45s ease; z-index: 9; }
     #splash.gone { opacity: 0; pointer-events: none; }
