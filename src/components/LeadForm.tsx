@@ -7,7 +7,7 @@ export default function LeadForm({ plan = '', title = 'Request a demo' }: { plan
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [err, setErr] = useState('');
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setV({ ...v, [k]: e.target.value });
-  const cls = 'w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm font-semibold focus:border-gold';
+  const cls = 'w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm font-semibold focus:border-haldi';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setState('busy'); setErr('');
@@ -19,7 +19,7 @@ export default function LeadForm({ plan = '', title = 'Request a demo' }: { plan
     } catch (x: any) { setErr(x.message); setState('idle'); }
   }
 
-  if (state === 'done') return <div className="card p-8 text-center"><div className="text-5xl">🙏</div><h3 className="mt-3 font-serif text-2xl font-bold">Thank you!</h3><p className="mt-2 text-muted">We have your details and will call you shortly.</p></div>;
+  if (state === 'done') return <div className="card p-8 text-center"><div className="haldi mx-auto grid size-14 place-items-center rounded-2xl text-2xl font-black">✓</div><h3 className="mt-3 font-serif text-2xl font-bold">Thank you!</h3><p className="mt-2 text-muted">We have your details and will call you shortly.</p></div>;
   return (
     <form onSubmit={submit} className="card space-y-4 p-7">
       <h3 className="font-serif text-2xl font-bold">{title}</h3>
@@ -31,7 +31,7 @@ export default function LeadForm({ plan = '', title = 'Request a demo' }: { plan
       <input className={cls} placeholder="City" value={v.city} onChange={set('city')} />
       <textarea className={cls} placeholder="Anything we should know? (optional)" rows={3} value={v.notes} onChange={set('notes')} />
       {err && <p className="text-sm font-bold text-red-600">{err}</p>}
-      <button disabled={state === 'busy'} className="gold-grad w-full rounded-2xl py-3.5 font-extrabold text-[#1a1206] disabled:opacity-60">{state === 'busy' ? 'Sending…' : 'Send request'}</button>
+      <button disabled={state === 'busy'} className="haldi w-full rounded-2xl py-3.5 font-extrabold disabled:opacity-60">{state === 'busy' ? 'Sending…' : 'Send request'}</button>
     </form>
   );
 }
