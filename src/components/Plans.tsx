@@ -1,22 +1,19 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, Minus, Sparkles, ShieldCheck } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Check, Lock, Crown, Sparkles, ShieldCheck } from 'lucide-react';
 import { bullets, Catalog, DEFAULT_CATALOG, fetchCatalog } from '@/lib/api';
 
-/** Pricing cards with Monthly / Yearly toggle & 7-day free trial guarantee */
+/** Live plans from the platform database with zero-delay static fallback */
 export default function Plans() {
   const [c, setC] = useState<Catalog>(DEFAULT_CATALOG);
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly');
 
   useEffect(() => {
-    fetchCatalog()
-      .then((data) => {
-        if (data && data.plans && data.plans.length > 0) setC(data);
-      })
-      .catch(() => {
-        // Gracefully use DEFAULT_CATALOG on static hosting
-      });
+    fetchCatalog().then((res) => {
+      if (res?.plans?.length) setC(res);
+    });
   }, []);
 
   return (
@@ -30,7 +27,7 @@ export default function Plans() {
           <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-800">Zero Autopay</span>
         </div>
         <p className="mt-1 text-xs text-amber-900/80">
-          Experience live QR ordering, kitchen display, and digital menu free for 7 days. Bina autopay ya deduction ke — koi card details nahi deni!
+          Experience live QR ordering, kitchen display, inventory, and digital menu free for 7 days. Bina autopay ya deduction ke!
         </p>
       </div>
 
@@ -55,78 +52,107 @@ export default function Plans() {
         </span>
       </div>
 
-      {/* Plan Cards */}
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-        {c.plans.map((p) => {
+      {/* 4 Plan Cards */}
+      <div className="grid items-stretch gap-5 md:grid-cols-2 lg:grid-cols-4">
+        {c.plans.map((p, i) => {
+          const isMaster = p.id === 'master';
+          const isGrowth = p.popular || p.id === 'growth';
+          const isUltra = p.id === 'ultra';
           const monthlyPrice = p.price;
-          // 20% discount on yearly (10 months price for 12 months)
           const annualMonthlyEquivalent = Math.round(monthlyPrice * 0.8);
           const annualTotal = monthlyPrice * 10;
           const displayPrice = billing === 'yearly' ? annualMonthlyEquivalent : monthlyPrice;
-          const isMaster = p.id === 'master';
+          const list = bullets(p, c.featureCatalog);
 
           return (
-            <div
+            <motion.div
               key={p.id}
-              className={`card relative flex flex-col p-7 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
-                isMaster ? 'border-fuchsia-500/50 bg-gradient-to-b from-fuchsia-500/5 to-transparent' : ''
-              }`}
-              style={
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: i * 0.07, ease: [0.2, 0.8, 0.2, 1] }}
+              className={`relative flex flex-col rounded-[28px] p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
                 isMaster
-                  ? { borderColor: '#d946ef', boxShadow: '0 20px 60px rgba(217, 70, 239, 0.2)' }
-                  : p.popular
-                  ? { borderColor: p.color, boxShadow: `0 20px 60px ${p.color}33` }
-                  : undefined
-              }
+                  ? 'bg-gradient-to-b from-[#2E102E] to-[#160A18] text-white shadow-[0_20px_60px_rgba(217,70,239,0.25)] border-2 border-fuchsia-500/60'
+                  : isGrowth
+                  ? 'jamun shadow-[0_30px_80px_-20px_rgba(34,21,46,.55)] border-2 border-amber-400'
+                  : 'card'
+              }`}
             >
-              {p.popular && (
-                <span className="gold-grad absolute -top-3 left-7 rounded-full px-3 py-1 text-[11px] font-extrabold text-[#1a1206]">
-                  MOST POPULAR
-                </span>
-              )}
               {isMaster && (
-                <span className="absolute -top-3 left-7 rounded-full bg-gradient-to-r from-fuchsia-600 to-pink-500 px-3 py-1 text-[11px] font-extrabold text-white shadow-sm">
-                  FLAGSHIP 👑
+                <span className="absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-fuchsia-600 to-pink-500 px-3.5 py-1 text-xs font-extrabold text-white shadow-lg">
+                  <Crown size={13} />FLAGSHIP 👑
                 </span>
               )}
-              <div className="text-xs font-extrabold uppercase tracking-widest" style={{ color: isMaster ? '#d946ef' : p.color }}>
+              {isGrowth && !isMaster && (
+                <span className="haldi absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-extrabold shadow-lg">
+                  <Crown size={13} />RECOMMENDED
+                </span>
+              )}
+              {isUltra && (
+                <span className="absolute -top-3.5 left-6 inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3.5 py-1 text-xs font-extrabold text-white shadow-lg">
+                  INVENTORY 📦
+                </span>
+              )}
+
+              <div className={`font-display text-2xl font-extrabold ${isMaster ? 'text-fuchsia-300' : isGrowth ? 'text-lux' : ''}`}>
                 {p.name}
               </div>
-              <div className="mt-3 flex items-end gap-1">
-                <span className="font-serif text-5xl font-bold">₹{displayPrice}</span>
-                <span className="pb-1.5 text-sm text-muted">/ month</span>
+              <p className={`mt-1 text-xs font-semibold ${isMaster || isGrowth ? 'text-white/70' : 'text-muted'}`}>
+                {p.tagline}
+              </p>
+
+              <div className="mt-4 flex items-end gap-1">
+                <span className="font-display text-5xl font-extrabold leading-none">₹{displayPrice}</span>
+                <span className={`pb-1 text-xs ${isMaster || isGrowth ? 'text-white/60' : 'text-muted'}`}>/ month</span>
               </div>
               {billing === 'yearly' && (
-                <div className="mt-0.5 text-xs font-semibold text-emerald-700">
-                  Billed annually at ₹{annualTotal}/yr (2 months free!)
+                <div className="mt-1 text-[11px] font-semibold text-emerald-600">
+                  ₹{annualTotal}/yr (2 months free!)
                 </div>
               )}
-              <p className="mt-2 text-sm font-bold">{p.tagline}</p>
-              {(p as any).description && <p className="mt-2 text-sm text-muted">{(p as any).description}</p>}
-              {(p as any).bestFor && (
-                <p className="mt-3 inline-block self-start rounded-full bg-black/5 px-3 py-1 text-xs font-bold">
-                  Best for: {(p as any).bestFor}
+
+              {p.bestFor && (
+                <p className={`mt-2 text-xs ${isMaster || isGrowth ? 'text-white/60' : 'text-muted'}`}>
+                  For {p.bestFor.toLowerCase()}
                 </p>
               )}
-              <ul className="my-6 flex-1 space-y-2.5">
-                {bullets(p, c.featureCatalog).map((b) => (
-                  <li key={b.text} className={`flex items-start gap-2.5 text-sm font-semibold ${b.on ? '' : 'text-muted/50'}`}>
-                    {b.on ? <Check size={17} className="mt-0.5 shrink-0 text-emerald-600" /> : <Minus size={17} className="mt-0.5 shrink-0" />}
-                    {b.text}
+
+              <ul className="my-6 flex-1 space-y-2">
+                {list.map((b) => (
+                  <li
+                    key={b.text}
+                    className={`flex items-start gap-2 text-xs font-semibold ${
+                      b.on ? '' : isMaster || isGrowth ? 'text-white/35' : 'text-faint/70'
+                    }`}
+                  >
+                    {b.on ? (
+                      <Check size={15} className={`mt-0.5 shrink-0 ${isMaster ? 'text-fuchsia-400' : isGrowth ? 'text-lux' : 'text-mint'}`} />
+                    ) : (
+                      <Lock size={13} className="mt-0.5 shrink-0 opacity-40" />
+                    )}
+                    <span>{b.text}</span>
                   </li>
                 ))}
               </ul>
+
               <Link
                 href="/download"
-                className="gold-grad rounded-2xl py-3.5 text-center font-extrabold text-[#1a1206] shadow-sm hover:opacity-95"
+                className={`rounded-2xl py-3.5 text-center text-sm font-extrabold transition-transform hover:-translate-y-0.5 ${
+                  isMaster
+                    ? 'bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white shadow-md'
+                    : isGrowth
+                    ? 'haldi shadow-[0_14px_30px_-10px_rgba(245,181,10,.7)]'
+                    : 'bg-ink text-white'
+                }`}
               >
-                {c.trialEnabled && c.trialDays > 0 ? `Start ${c.trialDays}-day free trial` : 'Get started'}
+                {c.trialEnabled && c.trialDays > 0 ? `Try ${p.name} free for ${c.trialDays} days` : `Get ${p.name}`}
               </Link>
-              <div className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] text-muted">
-                <ShieldCheck size={13} className="text-emerald-600" />
-                <span>Zero autopay • Cancel anytime</span>
+              <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-muted">
+                <ShieldCheck size={12} className="text-emerald-600" />
+                <span>Zero autopay • No card required</span>
               </div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
