@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion, LayoutGroup } from 'framer-motion';
 import { io } from 'socket.io-client';
-import { Search, X, MapPin, Clock, Phone, Wifi, AtSign, Share2, MessageCircle, Globe, Navigation, BellRing, CalendarDays, ShoppingBag, ChevronRight, Megaphone, Star, Copy, Check } from 'lucide-react';
+import { Search, X, MapPin, Clock, Phone, Wifi, AtSign, Share2, MessageCircle, Globe, Navigation, BellRing, CalendarDays, ShoppingBag, ChevronRight, Megaphone, Star, Copy, Check, Receipt } from 'lucide-react';
 import { API } from '@/lib/api';
 import Sheet from './Sheet';
-import { Book, CallStaff, Checkout, DishSheet, Rate, Tracker, VegMark, useOrder } from './Sheets';
+import { Book, CallStaff, Checkout, DishSheet, PastOrdersSheet, Rate, Tracker, VegMark, useOrder } from './Sheets';
 import { Addon, BADGE, CartLine, Dish, FONT, MenuData, Variant, alpha, inr, lum, onColor, photos } from './types';
 
-type Modal = null | 'dish' | 'cart' | 'track' | 'call' | 'book' | 'rate';
+type Modal = null | 'dish' | 'cart' | 'track' | 'call' | 'book' | 'rate' | 'past';
 const ease = [0.2, 0.8, 0.2, 1] as const;
 
 export default function MenuClient({ code }: { code: string }) {
@@ -198,6 +198,13 @@ export default function MenuClient({ code }: { code: string }) {
                 <BellRing size={22} />
               </motion.button>
             )}
+            {!count && (
+              <motion.button key="past-orders" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={() => setModal('past')} aria-label="Past orders" title="My past orders"
+                className="pointer-events-auto absolute bottom-[max(16px,env(safe-area-inset-bottom))] left-4 flex h-14 items-center gap-2 rounded-full px-4 text-xs font-black shadow-2xl transition-transform active:scale-95" style={{ background: 'var(--sf)', color: 'var(--tx)', border: '1px solid var(--line)' }}>
+                <Receipt size={18} style={{ color: 'var(--p)' }} />
+                <span>My Orders</span>
+              </motion.button>
+            )}
             {count > 0 && (
               <motion.button key="cart" initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} transition={{ type: 'spring', stiffness: 400, damping: 32 }} onClick={() => setModal('cart')}
                 className="pointer-events-auto flex items-center justify-between rounded-[22px] px-5 py-4 font-extrabold shadow-[0_18px_50px_-10px_rgba(0,0,0,.45)]" style={{ background: 'var(--p)', color: 'var(--onp)' }}>
@@ -224,6 +231,18 @@ export default function MenuClient({ code }: { code: string }) {
       <Sheet open={modal === 'call'} onClose={close} label="Call staff"><CallStaff code={code} table={table} tables={data.restaurant.tables || []} onTable={setTable} onDone={(m) => { close(); setToast(m); }} /></Sheet>
       <Sheet open={modal === 'book'} onClose={close} label="Book a table"><Book code={code} onDone={(m) => { close(); setToast(m); }} /></Sheet>
       <Sheet open={modal === 'rate'} onClose={close} label="Rate us"><Rate code={code} table={table} onDone={(m) => { close(); setToast(m); }} /></Sheet>
+      <Sheet open={modal === 'past'} onClose={close} label="My Past Orders">
+        <PastOrdersSheet
+          code={code}
+          onTrack={(ord) => {
+            try {
+              localStorage.setItem(`qrm_order_${code}`, JSON.stringify({ id: ord.id, key: ord.trackKey, token: ord.token }));
+            } catch (_) {}
+            setBump((b) => b + 1);
+            setModal('track');
+          }}
+        />
+      </Sheet>
 
       <AnimatePresence>
         {toast && (

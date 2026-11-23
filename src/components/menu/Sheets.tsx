@@ -111,12 +111,40 @@ export function DishSheet({ d, canOrder, onAdd }: { d: Dish; canOrder: boolean; 
   );
 }
 
-/** One QR for the whole restaurant: the guest taps their table (or types it when the owner has not listed tables). */
+/** One QR for the whole restaurant: the guest taps their table (or types it when the owner has not listed tables or for custom seats). */
 export function TablePicker({ tables, value, onChange }: { tables: string[]; value: string; onChange: (t: string) => void }) {
-  if (!tables.length) return <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="numeric" placeholder="Your table number" aria-label="Your table number" className={field} style={fieldStyle} />;
+  const [custom, setCustom] = useState(!tables.length || (!!value && !tables.includes(value)));
+  if (!tables.length || custom) {
+    return (
+      <div>
+        <div className="mb-2 flex items-center justify-between text-sm font-bold">
+          <span>Which table are you at?</span>
+          {tables.length > 0 && (
+            <button type="button" onClick={() => setCustom(false)} className="text-xs font-bold underline" style={{ color: 'var(--p)' }}>
+              Pick from table list
+            </button>
+          )}
+        </div>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. Table 4, Rooftop 2, Balcony"
+          aria-label="Your table number"
+          className={field}
+          style={fieldStyle}
+          autoFocus={custom && tables.length > 0}
+        />
+      </div>
+    );
+  }
   return (
     <div role="radiogroup" aria-label="Your table">
-      <div className="mb-2 text-sm font-bold">Which table are you at?</div>
+      <div className="mb-2 flex items-center justify-between text-sm font-bold">
+        <span>Which table are you at?</span>
+        <button type="button" onClick={() => setCustom(true)} className="text-xs font-bold underline" style={{ color: 'var(--p)' }}>
+          + Type manually
+        </button>
+      </div>
       <div className="flex flex-wrap gap-2">
         {tables.map((x) => (
           <button key={x} role="radio" aria-checked={value === x} onClick={() => onChange(x)} className="min-w-12 rounded-xl px-3.5 py-2.5 text-sm font-extrabold transition-transform active:scale-95"
@@ -146,10 +174,18 @@ export function Checkout({ cart, data, table, inc, dec, onPlaced, onTable }: { c
     if (!t.trim()) return setErr('Tell us your table so the food reaches you');
     if (phone && !/^\+?[0-9 ]{10,15}$/.test(phone)) return setErr('Enter a valid mobile number or leave it empty');
     setBusy(true);
+    let gid = '';
+    try {
+      gid = localStorage.getItem('qrm_guest_id') || '';
+      if (!gid) {
+        gid = 'g_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem('qrm_guest_id', gid);
+      }
+    } catch (_) {}
     try {
       const res = await fetch(`${API}/api/orders`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': idem.current },
-        body: JSON.stringify({ slug: r.shortId, table: t, name, phone, notes, items: cart.map((l) => ({ dishId: l.dish.id, variantId: l.variant?.id, addonIds: l.addons.map((x) => x.id), qty: l.qty })) }),
+        body: JSON.stringify({ slug: r.shortId, table: t, name, phone, notes, guestId: gid, items: cart.map((l) => ({ dishId: l.dish.id, variantId: l.variant?.id, addonIds: l.addons.map((x) => x.id), qty: l.qty })) }),
       });
       const j = await res.json();
       if (!res.ok || !j.success) throw new Error(j.message || 'Could not place the order');
@@ -229,10 +265,16 @@ export function useOrder(code: string, bump: number) {
 export function Tracker({ o, onRate, canRate }: { o: any; onRate: () => void; canRate: boolean }) {
   const idx = Math.max(0, STEPS.findIndex((s) => s.k === o.status));
   const cancelled = o.status === 'cancelled';
+  const isServed = idx === 3 || o.status === 'served';
+  const isPaid = o.payment?.status === 'paid' || o.paymentStatus === 'paid';
+  const payMethod = (o.payment?.method || 'UPI').toUpperCase();
+
   return (
     <div className="px-6 pt-2">
       <p className="text-sm font-bold" style={{ color: 'var(--mu)' }}>Order #{o.token}{o.tableNumber ? ` · ${o.tableNumber}` : ''}</p>
-      <h2 className="text-[28px] font-bold" style={{ fontFamily: 'var(--hf)' }}>{cancelled ? 'Order cancelled' : idx === 3 ? 'Enjoy your meal' : idx === 2 ? 'Your food is ready' : idx === 1 ? 'Being cooked now' : 'Kitchen has your order'}</h2>
+      <h2 className="text-[28px] font-bold" style={{ fontFamily: 'var(--hf)' }}>
+        {cancelled ? 'Order cancelled' : isServed ? 'Your Dining Receipt' : idx === 2 ? 'Your food is ready' : idx === 1 ? 'Being cooked now' : 'Kitchen has your order'}
+      </h2>
       {!cancelled && (
         <div className="relative mt-7 flex justify-between">
           <div className="absolute left-5 right-5 top-5 h-1 rounded-full" style={{ background: 'var(--line)' }} />
@@ -248,10 +290,65 @@ export function Tracker({ o, onRate, canRate }: { o: any; onRate: () => void; ca
           ))}
         </div>
       )}
-      <div className="mt-6 space-y-1 rounded-2xl p-4 text-sm" style={{ background: 'var(--soft)' }}>
-        {(o.items || []).map((l: any, i: number) => <div key={i} className="flex justify-between"><span>{l.qty} × {l.name}</span></div>)}
-        {o.totalAmount != null && <div className="flex justify-between border-t pt-2 font-extrabold" style={{ borderColor: 'var(--line)' }}><span>Total</span><span>{inr(o.totalAmount)}</span></div>}
-      </div>
+
+      {/* Served receipt slip / parchi */}
+      {isServed && !cancelled ? (
+        <div className="relative mt-6 overflow-hidden rounded-2xl border p-5 shadow-sm" style={{ background: 'var(--soft)', borderColor: 'var(--line)' }}>
+          <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--line)' }}>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground" style={{ color: 'var(--mu)' }}>Dining Receipt</p>
+              <p className="text-base font-extrabold">Bill #{o.token} · {o.tableNumber || 'Takeaway'}</p>
+            </div>
+            {isPaid ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-500/10 px-3 py-1 text-xs font-black tracking-wide text-emerald-600 dark:text-emerald-400">
+                <Check size={13} strokeWidth={3} /> PAID · {payMethod}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500 bg-amber-500/10 px-3 py-1 text-xs font-black tracking-wide text-amber-600 dark:text-amber-400">
+                PENDING · PAY AT COUNTER
+              </span>
+            )}
+          </div>
+
+          <div className="my-3 space-y-2 text-sm">
+            {(o.items || []).map((l: any, i: number) => (
+              <div key={i} className="flex justify-between">
+                <span className="font-medium">{l.qty} × {l.name}</span>
+                {l.price != null && <span className="font-bold">{inr(l.price * l.qty)}</span>}
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t pt-3" style={{ borderColor: 'var(--line)' }}>
+            {o.billing?.taxAmount > 0 && (
+              <div className="flex justify-between text-xs" style={{ color: 'var(--mu)' }}>
+                <span>Taxes</span>
+                <span>{inr(o.billing.taxAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-black">
+              <span>Total Bill</span>
+              <span>{inr(o.totalAmount || 0)}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-extrabold transition-colors"
+              style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--tx)' }}
+            >
+              <Receipt size={14} /> Print Receipt
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 space-y-1 rounded-2xl p-4 text-sm" style={{ background: 'var(--soft)' }}>
+          {(o.items || []).map((l: any, i: number) => <div key={i} className="flex justify-between"><span>{l.qty} × {l.name}</span></div>)}
+          {o.totalAmount != null && <div className="flex justify-between border-t pt-2 font-extrabold" style={{ borderColor: 'var(--line)' }}><span>Total</span><span>{inr(o.totalAmount)}</span></div>}
+        </div>
+      )}
+
       {canRate && idx >= 2 && <button onClick={onRate} className={`${btn} mt-4 w-full`} style={primaryBtn}><Star size={18} />Rate your meal</button>}
     </div>
   );
@@ -346,6 +443,80 @@ export function Rate({ code, table, onDone }: { code: string; table: string; onD
         )}
       </AnimatePresence>
       <button onClick={send} disabled={!stars || busy} className={`${btn} mt-5 w-full`} style={primaryBtn}>{busy ? 'Sending…' : 'Send'}</button>
+    </div>
+  );
+}
+
+export function PastOrdersSheet({ code, onTrack }: { code: string; onTrack: (order: any) => void }) {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let gid = '';
+    try { gid = localStorage.getItem('qrm_guest_id') || ''; } catch (_) {}
+    if (!gid) { setLoading(false); return; }
+    fetch(`${API}/api/orders/guest/${encodeURIComponent(gid)}?slug=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success && Array.isArray(j.orders)) setOrders(j.orders);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [code]);
+
+  return (
+    <div className="space-y-4 px-6 pt-2">
+      <div className="flex items-center gap-2">
+        <Receipt className="text-[var(--p)]" size={24} />
+        <h2 className="text-[26px] font-bold" style={{ fontFamily: 'var(--hf)' }}>My Past Orders</h2>
+      </div>
+      <p className="text-xs" style={{ color: 'var(--mu)' }}>
+        Your device-linked orders and receipts at this restaurant.
+      </p>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm font-bold" style={{ color: 'var(--mu)' }}>
+          Loading your past orders…
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="rounded-2xl border p-6 text-center text-sm" style={{ borderColor: 'var(--line)', background: 'var(--soft)' }}>
+          <p className="font-bold">No past orders found</p>
+          <p className="mt-1 text-xs" style={{ color: 'var(--mu)' }}>Orders you place here will appear in your device history.</p>
+        </div>
+      ) : (
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          {orders.map((o) => {
+            const isPaid = o.payment?.status === 'paid' || o.paymentStatus === 'paid';
+            const dateStr = o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            return (
+              <div key={o.id} className="rounded-2xl border p-4 shadow-sm" style={{ borderColor: 'var(--line)', background: 'var(--soft)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-extrabold">Order #{o.token} {o.tableNumber ? `· ${o.tableNumber}` : ''}</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-black uppercase tracking-wider ${isPaid ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                    {isPaid ? 'PAID' : o.status || 'UNPAID'}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs" style={{ color: 'var(--mu)' }}>
+                  {(o.items || []).map((it: any) => `${it.qty} × ${it.name}`).join(', ')}
+                </div>
+                <div className="mt-3 flex items-center justify-between border-t pt-2 text-sm font-bold" style={{ borderColor: 'var(--line)' }}>
+                  <span className="text-xs font-normal" style={{ color: 'var(--mu)' }}>{dateStr}</span>
+                  <div className="flex items-center gap-3">
+                    <span>{inr(o.totalAmount || 0)}</span>
+                    <button
+                      onClick={() => onTrack(o)}
+                      className="rounded-lg px-2.5 py-1 text-xs font-extrabold"
+                      style={{ background: 'var(--p)', color: 'var(--onp)' }}
+                    >
+                      View
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
