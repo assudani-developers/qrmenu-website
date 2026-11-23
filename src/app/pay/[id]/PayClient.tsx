@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import QRCode from 'qrcode';
-import { Check, Copy, Crown, ShieldCheck, Smartphone, TicketPercent, X, Clock3, PartyPopper, AlertTriangle } from 'lucide-react';
+import { Check, Copy, Crown, ShieldCheck, Smartphone, TicketPercent, X, Clock3, PartyPopper, AlertTriangle, Image as ImageIcon, UploadCloud } from 'lucide-react';
 import { API } from '@/lib/api';
 import Parchi, { ParchiLine, SealKind } from '@/components/pay/Parchi';
 
@@ -12,7 +12,7 @@ type View = {
   restaurant: { name: string; ownerName: string; phone: string; shortId: string; city: string };
   subscription: { status: string; plan: string; planName: string; daysLeft: number; endsAt: string | null; trialEndsAt: string | null };
   plans: PlanLite[]; payee: { upiId: string; name: string };
-  payment: null | { id: string; status: 'pending' | 'verified' | 'rejected'; amount: number; listPrice: number; coupon: string | null; discount: number; planId: string; utrRef: string; date: string; verifiedAt: string | null; paidUntil: string | null };
+  payment: null | { id: string; status: 'pending' | 'verified' | 'rejected'; amount: number; listPrice: number; coupon: string | null; discount: number; planId: string; utrRef: string; screenshotUrl?: string | null; date: string; verifiedAt: string | null; paidUntil: string | null };
 };
 type Quote = { original: number; discount: number; final: number; coupon?: { code: string; type: string; value: number; description?: string }; extraTrialDays: number };
 
@@ -37,6 +37,10 @@ export default function PayClient({ id }: { id: string }) {
   const [busy, setBusy] = useState('');
   const [utr, setUtr] = useState('');
   const [uErr, setUErr] = useState('');
+  const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>('');
+  const [uploadingSs, setUploadingSs] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [qr, setQr] = useState('');
   const [mobile, setMobile] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -80,13 +84,53 @@ export default function PayClient({ id }: { id: string }) {
     try { const j = await post(`/pay/${id}/trial-coupon`, { plan, coupon: code.trim() }); setV(j); setQuote(null); setCode(''); setCelebrate(true); } catch (e: any) { setCErr(e.message); }
     setBusy('');
   }
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith('image/')) {
+      setUErr('Please select a valid image file (PNG, JPG, WEBP)');
+      return;
+    }
+    setScreenshot(f);
+    setPreview(URL.createObjectURL(f));
+    setUErr('');
+  };
+
   async function submit() {
     setUErr('');
     const ref = utr.replace(/\s/g, '');
     if (!/^[A-Za-z0-9]{10,24}$/.test(ref)) return setUErr('Enter the 12-digit UPI reference (UTR) from your payment app');
     setBusy('submit');
-    try { const j = await post(`/pay/${id}/submit`, { plan, coupon: quote?.coupon ? quote.coupon.code : undefined, utr: ref }); setV(j); prevStatus.current = 'pending'; } catch (e: any) { setUErr(e.message); }
-    setBusy('');
+    try {
+      let ssUrl = '';
+      if (screenshot) {
+        setUploadingSs(true);
+        const fd = new FormData();
+        fd.append('screenshot', screenshot);
+        const upRes = await fetch(`${API}/api/pay/upload-screenshot`, {
+          method: 'POST',
+          body: fd,
+        });
+        const upJson = await upRes.json().catch(() => ({}));
+        if (upRes.ok && upJson.url) {
+          ssUrl = upJson.url;
+        }
+        setUploadingSs(false);
+      }
+      const j = await post(`/pay/${id}/submit`, {
+        plan,
+        coupon: quote?.coupon ? quote.coupon.code : undefined,
+        utr: ref,
+        screenshotUrl: ssUrl || undefined,
+      });
+      setV(j);
+      prevStatus.current = 'pending';
+    } catch (e: any) {
+      setUErr(e.message);
+    } finally {
+      setBusy('');
+      setUploadingSs(false);
+    }
   }
 
   const receipt = useMemo(() => {
@@ -191,29 +235,114 @@ export default function PayClient({ id }: { id: string }) {
                   {!v.payee.upiId ? (
                     <p className="rounded-2xl bg-white/[.06] p-4 text-sm text-white/70">Online payment is not set up yet. Please contact support.</p>
                   ) : (
-                    <div className="grid items-center gap-4 sm:grid-cols-[180px_1fr]">
-                      {qr && <img src={qr} alt="UPI QR code for this payment" className={`${mobile ? 'hidden sm:block' : ''} w-full max-w-[180px] rounded-2xl bg-white p-2`} />}
+                    <div className="grid items-center gap-5 sm:grid-cols-[190px_1fr]">
+                      <div className="flex flex-col items-center">
+                        <div className="w-full max-w-[190px] overflow-hidden rounded-2xl bg-white p-2.5 shadow-2xl ring-1 ring-white/20">
+                          <img
+                            src="/images/payment_qr.png"
+                            alt="Piyush Assudani UPI Payment QR"
+                            className="w-full h-auto rounded-xl object-contain"
+                          />
+                          <div className="mt-1.5 border-t border-slate-100 pt-1 text-center">
+                            <div className="text-[11px] font-black uppercase tracking-wider text-slate-900">PIYUSH ASSUDANI</div>
+                            <div className="text-[10px] font-semibold text-slate-500">9413879444@yespop</div>
+                          </div>
+                        </div>
+                      </div>
                       <div className="space-y-3">
-                        {mobile && <a href={upi} className="haldi flex items-center justify-center gap-2 rounded-2xl py-4 text-lg font-extrabold shadow-[0_14px_30px_-10px_rgba(245,181,10,.7)]"><Smartphone size={20} />Open UPI app · {inr(price?.final || 0)}</a>}
-                        {!mobile && <p className="text-sm text-white/65">Scan this code with Google Pay, PhonePe, Paytm, BHIM or your bank app. The amount is filled in for you.</p>}
+                        {mobile && (
+                          <a href={upi} className="haldi flex items-center justify-center gap-2 rounded-2xl py-4 text-lg font-extrabold shadow-[0_14px_30px_-10px_rgba(245,181,10,.7)]">
+                            <Smartphone size={20} />Open UPI app · {inr(price?.final || 0)}
+                          </a>
+                        )}
+                        <p className="text-sm text-white/65">
+                          Scan this official QR with Google Pay, PhonePe, Paytm, BHIM, or your bank app. The payee name is <b className="text-white">PIYUSH ASSUDANI</b>.
+                        </p>
                         <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/12 bg-white/[.05] px-4 py-3">
-                          <div className="min-w-0"><div className="text-[11px] font-bold text-white/45">Or pay to UPI ID</div><div className="truncate font-bold">{v.payee.upiId}</div></div>
-                          <button onClick={() => { navigator.clipboard?.writeText(v.payee.upiId); setCopied(true); setTimeout(() => setCopied(false), 1600); }} className="flex shrink-0 items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold">{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Copied' : 'Copy'}</button>
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-bold text-white/45">Or pay to UPI ID</div>
+                            <div className="truncate font-bold">{v.payee.upiId || '9413879444@yespop'}</div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard?.writeText(v.payee.upiId || '9413879444@yespop');
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 1600);
+                            }}
+                            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold hover:bg-white/15"
+                          >
+                            {copied ? <Check size={15} /> : <Copy size={15} />}
+                            {copied ? 'Copied' : 'Copy'}
+                          </button>
                         </div>
                       </div>
                     </div>
                   )}
                 </Step>
 
-                <Step n={4} title="Paste the payment reference">
-                  <p className="-mt-1 mb-3 text-sm text-white/55">After paying, your UPI app shows a 12-digit UPI reference number (also called UTR or transaction ID).</p>
-                  <input value={utr} onChange={(e) => { setUtr(e.target.value); setUErr(''); }} inputMode="numeric" placeholder="e.g. 412345678901" aria-label="UPI reference number"
-                    className="h-14 w-full rounded-2xl border border-white/12 bg-white/[.05] px-4 text-lg font-bold tracking-widest placeholder:font-medium placeholder:tracking-normal placeholder:text-white/30" />
+                <Step n={4} title="Paste reference & attach screenshot">
+                  <p className="-mt-1 mb-3 text-sm text-white/55">
+                    After paying, enter the 12-digit UPI reference (UTR) from your payment app. You can also attach a screenshot for faster verification.
+                  </p>
+                  <input
+                    value={utr}
+                    onChange={(e) => { setUtr(e.target.value); setUErr(''); }}
+                    inputMode="numeric"
+                    placeholder="e.g. 412345678901 (12-digit UTR)"
+                    aria-label="UPI reference number"
+                    className="h-14 w-full rounded-2xl border border-white/12 bg-white/[.05] px-4 text-lg font-bold tracking-widest placeholder:font-medium placeholder:tracking-normal placeholder:text-white/30"
+                  />
                   {uErr && <p role="alert" className="mt-2 text-sm font-bold text-[#ff8a7a]">{uErr}</p>}
-                  <button onClick={submit} disabled={busy === 'submit' || !v.payee.upiId} className="haldi mt-4 w-full rounded-2xl py-4 text-lg font-extrabold transition-transform active:scale-[.98] disabled:opacity-50">
-                    {busy === 'submit' ? 'Sending…' : `I have paid ${inr(price?.final || 0)}`}
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFile}
+                    accept="image/*"
+                    className="hidden"
+                  />
+
+                  {!preview ? (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border border-dashed border-white/20 bg-white/[.03] py-3.5 px-4 text-sm font-bold text-white/80 transition-all hover:border-[#f5b50a] hover:bg-white/[.07]"
+                    >
+                      <UploadCloud size={18} className="text-[#f5b50a]" />
+                      <span>Attach Payment Screenshot (optional)</span>
+                    </button>
+                  ) : (
+                    <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/15 bg-white/[.06] p-2.5 pr-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img src={preview} alt="Screenshot proof preview" className="size-12 shrink-0 rounded-xl object-cover ring-1 ring-white/20" />
+                        <div className="min-w-0 text-left">
+                          <div className="truncate text-xs font-bold text-white">{screenshot?.name || 'Screenshot'}</div>
+                          <div className="text-[11px] font-semibold text-emerald-400">Proof attached · ready to send</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setScreenshot(null); setPreview(''); }}
+                        className="rounded-xl p-2 text-white/60 hover:bg-white/10 hover:text-white"
+                        title="Remove screenshot"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={submit}
+                    disabled={busy === 'submit' || !v.payee.upiId}
+                    className="haldi mt-4 w-full rounded-2xl py-4 text-lg font-extrabold transition-transform active:scale-[.98] disabled:opacity-50"
+                  >
+                    {busy === 'submit'
+                      ? (uploadingSs ? 'Uploading screenshot…' : 'Submitting payment…')
+                      : `I have paid ${inr(price?.final || 0)}`}
                   </button>
-                  <p className="mt-3 flex items-center gap-2 text-xs text-white/45"><ShieldCheck size={14} />We never ask for your UPI PIN, card or bank login.</p>
+                  <p className="mt-3 flex items-center gap-2 text-xs text-white/45">
+                    <ShieldCheck size={14} />We never ask for your UPI PIN, card or bank login.
+                  </p>
                 </Step>
               </motion.div>
             )}
